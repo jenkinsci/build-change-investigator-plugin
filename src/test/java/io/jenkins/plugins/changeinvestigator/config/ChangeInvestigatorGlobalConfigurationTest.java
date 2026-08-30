@@ -22,7 +22,6 @@ class ChangeInvestigatorGlobalConfigurationTest {
         config.setMaxLogContextChars(1234);
         config.setTimeoutSeconds(45);
         config.setTemperature(0.55);
-        config.setAdditionalHeaders("X-Foo: bar\nX-Baz: qux");
 
         // A brand-new instance loads from the same on-disk config file, independent of the
         // singleton's in-memory state, proving the settings were actually persisted.
@@ -35,7 +34,6 @@ class ChangeInvestigatorGlobalConfigurationTest {
         assertEquals(1234, reloaded.getMaxLogContextChars());
         assertEquals(45, reloaded.getTimeoutSeconds());
         assertEquals(0.55, reloaded.getTemperature(), 0.0001);
-        assertEquals("X-Foo: bar\nX-Baz: qux", reloaded.getAdditionalHeaders());
     }
 
     @Test
@@ -47,17 +45,21 @@ class ChangeInvestigatorGlobalConfigurationTest {
     }
 
     @Test
-    void toProviderConfigParsesHeaderLinesAndOmitsBlankOnes(JenkinsRule jenkins) {
+    void toProviderConfigCarriesSettingsThroughAndOmitsUnresolvedToken(JenkinsRule jenkins) {
         ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();
         config.setBaseUrl("https://example.test/v1");
         config.setModel("m");
-        config.setAdditionalHeaders("X-One: 1\n\nnot-a-header-line\nX-Two: 2");
+        config.setTimeoutSeconds(45);
+        config.setTemperature(0.55);
+        config.setMaxLogContextChars(1234);
 
         AiProviderConfig providerConfig = config.toProviderConfig();
 
-        assertEquals("1", providerConfig.extraHeaders().get("X-One"));
-        assertEquals("2", providerConfig.extraHeaders().get("X-Two"));
-        assertEquals(2, providerConfig.extraHeaders().size());
+        assertEquals("https://example.test/v1", providerConfig.baseUrl());
+        assertEquals("m", providerConfig.model());
+        assertEquals(45, providerConfig.timeoutSeconds());
+        assertEquals(0.55, providerConfig.temperature(), 0.0001);
+        assertEquals(1234, providerConfig.maxLogContextChars());
         assertFalse(providerConfig.hasApiToken(), "no credential configured, so no token should resolve");
     }
 }

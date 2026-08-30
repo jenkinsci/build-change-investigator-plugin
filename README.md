@@ -6,6 +6,13 @@ most likely responsible for the regression?"**
 A Jenkins plugin focused on regression/change correlation for failed builds - not generic
 AI-powered error explanation.
 
+> **Repository location:** this project currently lives at
+> `https://github.com/InfraGuard-Labs/build-change-investigator` (pre-hosting). If/when it is
+> accepted into the official Jenkins plugin ecosystem, the canonical repository moves under the
+> `jenkinsci` GitHub organization and every URL in this repository (`pom.xml`'s `<url>`/`<scm>`,
+> this README, `SECURITY.md`) will be updated to match at that time - see
+> [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md#6-future-jenkins-plugin-site-update-center-publication-requirements).
+
 ## Table of contents
 
 - [Problem statement](#problem-statement)
@@ -80,7 +87,7 @@ ASSESSMENT" sections described under [Usage](#usage).)*
 
 1. Build the plugin (see [CONTRIBUTING.md](CONTRIBUTING.md)) to produce
    `target/build-change-investigator.hpi`, or download the `.hpi` from a
-   [GitHub Release](https://github.com/jenkinsci/build-change-investigator-plugin/releases) once
+   [GitHub Release](https://github.com/InfraGuard-Labs/build-change-investigator/releases) once
    published.
 2. In Jenkins, go to **Manage Jenkins → Plugins → Advanced settings → Deploy Plugin** and
    upload the `.hpi` file (or copy it into `$JENKINS_HOME/plugins/` and restart Jenkins).
@@ -101,8 +108,13 @@ Go to **Manage Jenkins → System → Build Change Investigator**:
 | Max Log Context Characters | Upper bound on how much (already-reduced, already-redacted) log text is sent to the AI provider. |
 | Connection Timeout | Seconds to wait for the AI provider before giving up. |
 | Temperature | Sampling temperature; kept low by default. |
-| Additional HTTP Headers | Optional `Header-Name: value` lines, one per line, for gateways needing extra headers. |
 | Test Connection | Sends a minimal request to verify the configuration works before relying on it. |
+
+All secrets (the AI provider's API token) are handled exclusively through the Jenkins
+Credentials plugin - there is no field anywhere in this plugin for pasting a raw secret, and
+v1 does not support custom HTTP headers of any kind (including header-based auth schemes) for
+the AI request. If your provider requires an authentication method other than an
+`Authorization: Bearer` header, it is not supported in this version.
 
 Only Jenkins administrators (`Jenkins.ADMINISTER`) can view or change these settings, and the
 API token value is never exposed back to the browser.
@@ -110,12 +122,15 @@ API token value is never exposed back to the browser.
 ### Permissions
 
 This plugin adds one permission: **`RunChangeInvestigationAnalysis`** (shown in the job
-permission matrix under the standard "Item" permissions). It is implied by `Item.BUILD`, so
-anyone already trusted to trigger builds gets it automatically; administrators can grant or
-revoke it independently per job/folder in the permission matrix. Viewing an investigation
-(the observed evidence and any cached AI result) requires only the standard `Item.READ`
-permission already used to view the build itself - no separate permission is needed to look at
-what's already there.
+permission matrix under the standard "Item" permissions). It must be **granted explicitly** -
+it is deliberately *not* implied by `Item.BUILD` or any other job-trigger permission, since
+being trusted to run builds does not, by itself, authorize spending AI provider budget on a
+user's behalf. It is implied only by `Jenkins.ADMINISTER`: instance administrators have
+effective access to it automatically, the same way they have effective access to everything
+else, without needing a redundant separate grant. Viewing an investigation (the observed
+evidence and any cached AI result) requires only the standard `Item.READ` permission already
+used to view the build itself - no separate permission is needed to look at what's already
+there.
 
 ## Usage
 

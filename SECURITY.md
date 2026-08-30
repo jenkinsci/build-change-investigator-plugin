@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 If you find a security issue in this plugin, please report it privately rather than opening
-a public issue. Open a [GitHub Security Advisory](https://github.com/jenkinsci/build-change-investigator-plugin/security/advisories/new)
+a public issue. Open a [GitHub Security Advisory](https://github.com/InfraGuard-Labs/build-change-investigator/security/advisories/new)
 on this repository, or email the maintainer listed in the plugin's `pom.xml`. Please do not
 disclose the issue publicly until a fix has been released.
 

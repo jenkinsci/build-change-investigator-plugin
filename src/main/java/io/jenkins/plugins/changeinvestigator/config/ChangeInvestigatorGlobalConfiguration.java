@@ -11,7 +11,6 @@ import hudson.util.Secret;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException;
 import io.jenkins.plugins.changeinvestigator.ai.AiProviderConfig;
 import io.jenkins.plugins.changeinvestigator.ai.OpenAiCompatibleClient;
-import java.util.Arrays;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -46,7 +45,6 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
     private int maxLogContextChars = DEFAULT_MAX_LOG_CONTEXT_CHARS;
     private int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
     private double temperature = DEFAULT_TEMPERATURE;
-    private String additionalHeaders = "";
 
     public ChangeInvestigatorGlobalConfiguration() {
         load();
@@ -133,16 +131,6 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
         save();
     }
 
-    public String getAdditionalHeaders() {
-        return additionalHeaders;
-    }
-
-    @DataBoundSetter
-    public void setAdditionalHeaders(String additionalHeaders) {
-        this.additionalHeaders = additionalHeaders == null ? "" : additionalHeaders;
-        save();
-    }
-
     /** Resolves the configured credential to a plaintext token. Never logs or persists the value. */
     public String resolveApiToken() {
         if (credentialsId == null || credentialsId.isBlank()) {
@@ -156,14 +144,12 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
     }
 
     public AiProviderConfig toProviderConfig() {
-        List<String> headerLines = Arrays.asList(additionalHeaders.split("\\R"));
         return new AiProviderConfig(
                 baseUrl,
                 model,
                 resolveApiToken(),
                 timeoutSeconds,
                 temperature,
-                AiProviderConfig.parseHeaderLines(headerLines),
                 maxLogContextChars);
     }
 
@@ -186,8 +172,7 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
             @QueryParameter String baseUrl,
             @QueryParameter String model,
             @QueryParameter String credentialsId,
-            @QueryParameter int timeoutSeconds,
-            @QueryParameter String additionalHeaders) {
+            @QueryParameter int timeoutSeconds) {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
 
         if (baseUrl == null || baseUrl.isBlank()) {
@@ -211,8 +196,6 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
                 Secret.toString(credentials.getSecret()),
                 timeoutSeconds <= 0 ? DEFAULT_TIMEOUT_SECONDS : timeoutSeconds,
                 0.0,
-                AiProviderConfig.parseHeaderLines(Arrays.asList(
-                        additionalHeaders == null ? new String[0] : additionalHeaders.split("\\R"))),
                 200);
         try {
             new OpenAiCompatibleClient(testConfig, new ObjectMapper()).chatCompletion(

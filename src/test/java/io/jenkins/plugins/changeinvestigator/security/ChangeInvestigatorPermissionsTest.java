@@ -16,8 +16,9 @@ import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 /**
  * Confirms the plugin's custom permission composes correctly into Jenkins' job permission
- * matrix: a user with only read/build access does not get it, a user explicitly granted it
- * (or granted the implying {@code Item.BUILD}) does.
+ * matrix: a user with only read/build access does not get it; a user explicitly granted it
+ * does; a Jenkins administrator (holder of {@code Jenkins.ADMINISTER}) does, via normal
+ * Jenkins permission semantics, without needing a separate explicit grant.
  */
 @WithJenkins
 class ChangeInvestigatorPermissionsTest {
@@ -42,16 +43,30 @@ class ChangeInvestigatorPermissionsTest {
     }
 
     @Test
-    void permissionIsImpliedByBuildPermission(JenkinsRule jenkins) throws Exception {
+    void buildPermissionAloneDoesNotImplyAiAnalysisPermission(JenkinsRule jenkins) throws Exception {
         jenkins.jenkins.setSecurityRealm(jenkins.createDummySecurityRealm());
         jenkins.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy()
                 .grant(Jenkins.READ, Item.READ, Item.BUILD).everywhere().to("builderUser"));
 
-        FreeStyleProject project = jenkins.createFreeStyleProject("implied-permission-test");
+        FreeStyleProject project = jenkins.createFreeStyleProject("build-only-test");
 
         try (ACLContext ctx = ACL.as2(User.getById("builderUser", true).impersonate2())) {
+            assertFalse(project.hasPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS),
+                    "Being trusted to trigger builds must not, by itself, authorize AI analysis");
+        }
+    }
+
+    @Test
+    void jenkinsAdministratorHasAiAnalysisPermissionWithoutExplicitGrant(JenkinsRule jenkins) throws Exception {
+        jenkins.jenkins.setSecurityRealm(jenkins.createDummySecurityRealm());
+        jenkins.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy()
+                .grant(Jenkins.ADMINISTER).everywhere().to("adminUser"));
+
+        FreeStyleProject project = jenkins.createFreeStyleProject("admin-test");
+
+        try (ACLContext ctx = ACL.as2(User.getById("adminUser", true).impersonate2())) {
             assertTrue(project.hasPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS),
-                    "Item.BUILD should imply the plugin's RUN_AI_ANALYSIS permission");
+                    "Jenkins.ADMINISTER should imply the plugin's RUN_AI_ANALYSIS permission");
         }
     }
 }

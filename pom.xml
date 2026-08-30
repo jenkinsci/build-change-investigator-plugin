@@ -22,7 +22,10 @@
     most likely caused the regression, combining deterministic SCM/log evidence
     with an optional AI assessment.
   </description>
-  <url>https://github.com/jenkinsci/build-change-investigator-plugin</url>
+  <!-- Pre-hosting repository location. Once this plugin is accepted for official Jenkins
+       hosting (see RELEASE_CHECKLIST.md), the repository moves under the jenkinsci GitHub
+       organization and every URL/SCM reference below must be updated to match. -->
+  <url>https://github.com/InfraGuard-Labs/build-change-investigator</url>
 
   <licenses>
     <license>
@@ -40,9 +43,9 @@
   </developers>
 
   <scm>
-    <connection>scm:git:https://github.com/jenkinsci/build-change-investigator-plugin.git</connection>
-    <developerConnection>scm:git:https://github.com/jenkinsci/build-change-investigator-plugin.git</developerConnection>
-    <url>https://github.com/jenkinsci/build-change-investigator-plugin</url>
+    <connection>scm:git:https://github.com/InfraGuard-Labs/build-change-investigator.git</connection>
+    <developerConnection>scm:git:https://github.com/InfraGuard-Labs/build-change-investigator.git</developerConnection>
+    <url>https://github.com/InfraGuard-Labs/build-change-investigator</url>
     <tag>HEAD</tag>
   </scm>
 
@@ -51,7 +54,7 @@
     <jenkins.baseline>2.568</jenkins.baseline>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <gitHubRepo>jenkinsci/build-change-investigator-plugin</gitHubRepo>
+    <gitHubRepo>InfraGuard-Labs/build-change-investigator</gitHubRepo>
     <spotbugs.skip>false</spotbugs.skip>
   </properties>
 

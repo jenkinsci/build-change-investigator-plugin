@@ -19,9 +19,11 @@ Initial release.
   Jenkins Credentials plugin. Disabled by default.
 - `Build Change Investigation` action on the build page for builds with observed evidence, with
   a "Run AI Analysis" / "Re-run AI Analysis" button gated by a dedicated
-  `RunChangeInvestigationAnalysis` permission (implied by `Item.BUILD`).
+  `RunChangeInvestigationAnalysis` permission. This permission must be granted explicitly (it is
+  implied only by `Jenkins.ADMINISTER`, not by `Item.BUILD`) - being trusted to trigger builds
+  does not, by itself, authorize AI provider spend.
 - AI results are cached per build (persisted with the build) so viewing a build page never
   triggers a new AI API call - only an explicit click does.
-- Global configuration: enable/disable, base URL, model, credential, max log context
-  characters, connection timeout, temperature, additional HTTP headers, and a Test Connection
-  button.
+- Global configuration: enable/disable, base URL, model, credential (Jenkins Credentials only -
+  no raw secret entry anywhere in the plugin), max log context characters, connection timeout,
+  temperature, and a Test Connection button.

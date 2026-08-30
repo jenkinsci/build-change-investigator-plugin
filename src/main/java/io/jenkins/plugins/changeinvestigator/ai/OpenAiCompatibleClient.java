@@ -10,7 +10,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
-import java.util.Map;
 
 /**
  * Minimal client for the OpenAI "chat completions" HTTP shape
@@ -51,19 +50,17 @@ public final class OpenAiCompatibleClient {
                 .connectTimeout(timeout)
                 .build();
 
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + config.apiToken())
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody));
-        for (Map.Entry<String, String> header : config.extraHeaders().entrySet()) {
-            requestBuilder.header(header.getKey(), header.getValue());
-        }
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
 
         HttpResponse<String> response;
         try {
-            response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (HttpTimeoutException e) {
             throw new AiAnalysisException(AiAnalysisException.Kind.TIMEOUT,
                     "Timed out waiting for the AI provider after " + config.timeoutSeconds() + "s.", e);
