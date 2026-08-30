@@ -1,0 +1,211 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout" xmlns:f="/lib/form">
+  <l:layout title="${it.displayName} - ${it.run.fullDisplayName}">
+    <st:include page="sidepanel.jelly" it="${it.run}" optional="true"/>
+    <l:main-panel>
+      <style>
+        .bci-section { margin-bottom: 24px; }
+        .bci-heading { font-size: 1.1em; font-weight: 600; margin-bottom: 8px; padding-bottom: 4px;
+                       border-bottom: 2px solid var(--text-color-secondary, #ccc); }
+        .bci-heading.bci-observed { border-bottom-color: #4a90d9; }
+        .bci-heading.bci-ai { border-bottom-color: #8e44ad; }
+        .bci-tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.85em;
+                   font-weight: 600; margin-left: 8px; }
+        .bci-tag.bci-observed { background: #eaf2fb; color: #205081; }
+        .bci-tag.bci-ai { background: #f3e9f8; color: #6c3483; }
+        .bci-comparison { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 8px; }
+        .bci-build-card { border: 1px solid var(--text-color-secondary, #ddd); border-radius: 6px;
+                           padding: 10px 14px; min-width: 220px; }
+        .bci-build-card.bci-fail { border-left: 4px solid #d9534f; }
+        .bci-build-card.bci-success { border-left: 4px solid #5cb85c; }
+        .bci-warning-list { background: #fff8e1; border: 1px solid #f0d78c; border-radius: 4px;
+                             padding: 8px 14px; }
+        .bci-log-excerpt { background: #1e1e1e; color: #d4d4d4; padding: 10px 14px; border-radius: 4px;
+                            overflow-x: auto; max-height: 420px; overflow-y: auto; font-size: 0.85em; }
+        .bci-log-excerpt pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+        .bci-confidence { display: inline-block; padding: 3px 10px; border-radius: 12px; font-weight: 700;
+                           font-size: 0.8em; letter-spacing: 0.03em; }
+        .bci-confidence-high { background: #d4edda; color: #155724; }
+        .bci-confidence-medium { background: #fff3cd; color: #856404; }
+        .bci-confidence-low { background: #f8d7da; color: #721c24; }
+        .bci-confidence-unknown { background: #e2e3e5; color: #383d41; }
+        .bci-change-table { width: 100%; border-collapse: collapse; }
+        .bci-change-table th, .bci-change-table td { text-align: left; padding: 6px 10px;
+                                                       border-bottom: 1px solid var(--text-color-secondary, #eee); }
+        .bci-muted { color: var(--text-color-secondary, #777); font-style: italic; }
+        .bci-ai-disabled, .bci-ai-failed, .bci-ai-not-run {
+          border: 1px dashed var(--text-color-secondary, #ccc); border-radius: 6px; padding: 14px; }
+        .bci-ai-failed { border-color: #d9534f; background: #fdf3f2; }
+      </style>
+
+      <h1>Build Change Investigation</h1>
+      <p class="bci-muted">
+        Which change between the last successful build and this build most likely caused the regression?
+        Observed evidence below comes directly from Jenkins. The AI assessment (if run) is a separate,
+        clearly-marked interpretation - never treat it as fact on its own.
+      </p>
+
+      <div class="bci-section">
+        <div class="bci-heading bci-observed">BUILD COMPARISON <span class="bci-tag bci-observed">OBSERVED</span></div>
+        <div class="bci-comparison">
+          <div class="bci-build-card bci-fail">
+            <div><strong>Failed Build</strong></div>
+            <div>#${it.evidence.failedBuildNumber} - ${it.evidence.failedBuildResult}</div>
+            <div class="bci-muted">Duration: ${it.evidence.failedBuildDurationString}</div>
+          </div>
+          <j:choose>
+            <j:when test="${it.evidence.previousSuccessfulBuildFound}">
+              <div class="bci-build-card bci-success">
+                <div><strong>Last Successful Build</strong></div>
+                <div>
+                  <a href="${rootURL}/${it.evidence.previousSuccessfulBuildUrl}">#${it.evidence.previousSuccessfulBuildNumber} - SUCCESS</a>
+                </div>
+              </div>
+            </j:when>
+            <j:otherwise>
+              <div class="bci-build-card">
+                <div><strong>Last Successful Build</strong></div>
+                <div class="bci-muted">None found</div>
+              </div>
+            </j:otherwise>
+          </j:choose>
+          <div class="bci-build-card">
+            <div><strong>Agent / Node</strong></div>
+            <div>
+              <j:choose>
+                <j:when test="${it.evidence.nodeInfoAvailable}">${it.evidence.nodeName}</j:when>
+                <j:otherwise><span class="bci-muted">unavailable</span></j:otherwise>
+              </j:choose>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <j:if test="${!empty(it.evidence.warnings)}">
+        <div class="bci-section">
+          <div class="bci-warning-list">
+            <strong>Evidence notes</strong>
+            <ul>
+              <j:forEach var="w" items="${it.evidence.warnings}">
+                <li>${w}</li>
+              </j:forEach>
+            </ul>
+          </div>
+        </div>
+      </j:if>
+
+      <div class="bci-section">
+        <div class="bci-heading bci-observed">
+          CHANGES SINCE LAST SUCCESS <span class="bci-tag bci-observed">OBSERVED</span>
+        </div>
+        <j:choose>
+          <j:when test="${empty(it.evidence.changeEntries)}">
+            <p class="bci-muted">No change entries available.</p>
+          </j:when>
+          <j:otherwise>
+            <table class="bci-change-table">
+              <thead>
+                <tr><th>Build</th><th>Revision</th><th>Author</th><th>Message</th><th>Files</th></tr>
+              </thead>
+              <tbody>
+                <j:forEach var="c" items="${it.evidence.changeEntries}">
+                  <tr>
+                    <td>#${c.fromBuildNumber}</td>
+                    <td>
+                      <j:choose>
+                        <j:when test="${c.hasCommitId()}">${c.commitId}</j:when>
+                        <j:otherwise><span class="bci-muted">unavailable</span></j:otherwise>
+                      </j:choose>
+                    </td>
+                    <td>${c.author}</td>
+                    <td>${c.shortMessage}</td>
+                    <td>
+                      <j:choose>
+                        <j:when test="${empty(c.affectedFiles)}"><span class="bci-muted">unavailable</span></j:when>
+                        <j:otherwise>${c.affectedFiles.size()} file(s)</j:otherwise>
+                      </j:choose>
+                    </td>
+                  </tr>
+                </j:forEach>
+              </tbody>
+            </table>
+          </j:otherwise>
+        </j:choose>
+      </div>
+
+      <div class="bci-section">
+        <div class="bci-heading bci-observed">
+          FAILURE LOG EXCERPT <span class="bci-tag bci-observed">OBSERVED</span>
+        </div>
+        <j:choose>
+          <j:when test="${it.evidence.logAvailable}">
+            <div class="bci-log-excerpt"><pre><j:forEach var="line" items="${it.evidence.logExcerpt}">${line}
+</j:forEach></pre></div>
+            <j:if test="${it.evidence.logExcerptTruncated}">
+              <p class="bci-muted">Excerpt truncated to the configured maximum size.</p>
+            </j:if>
+          </j:when>
+          <j:otherwise>
+            <p class="bci-muted">No log excerpt available.</p>
+          </j:otherwise>
+        </j:choose>
+      </div>
+
+      <div class="bci-section">
+        <div class="bci-heading bci-ai">AI ASSESSMENT <span class="bci-tag bci-ai">AI-GENERATED</span></div>
+
+        <j:choose>
+          <j:when test="${it.hasAiAssessment() and it.aiAssessment.completed}">
+            <p>
+              <strong>Confidence:</strong>
+              <span class="bci-confidence bci-confidence-${it.aiAssessment.confidenceLabel.toLowerCase()}">
+                ${it.aiAssessment.confidenceLabel}
+              </span>
+            </p>
+            <j:if test="${it.aiAssessment.insufficientEvidence}">
+              <p><em>The model reported that the available evidence was insufficient for a confident assessment.</em></p>
+            </j:if>
+            <p><strong>Most likely regression:</strong><br/>${it.aiAssessment.mostLikelyCause}</p>
+            <p><strong>Why:</strong><br/>${it.aiAssessment.reasoning}</p>
+            <j:if test="${!empty(it.aiAssessment.supportingEvidence)}">
+              <p><strong>Supporting evidence cited:</strong></p>
+              <ul>
+                <j:forEach var="e" items="${it.aiAssessment.supportingEvidence}"><li>${e}</li></j:forEach>
+              </ul>
+            </j:if>
+            <j:if test="${!empty(it.aiAssessment.recommendedChecks)}">
+              <p><strong>Recommended checks:</strong></p>
+              <ol>
+                <j:forEach var="chk" items="${it.aiAssessment.recommendedChecks}"><li>${chk}</li></j:forEach>
+              </ol>
+            </j:if>
+            <p class="bci-muted">Model: ${it.aiAssessment.modelUsed}</p>
+          </j:when>
+          <j:when test="${it.hasAiAssessment() and it.aiAssessment.failed}">
+            <div class="bci-ai-failed">
+              <strong>AI unavailable - showing observed evidence only.</strong>
+              <p>${it.aiAssessment.errorMessage}</p>
+            </div>
+          </j:when>
+          <j:when test="${it.hasAiAssessment() and it.aiAssessment.disabled}">
+            <div class="bci-ai-disabled">AI analysis is disabled by the Jenkins administrator.</div>
+          </j:when>
+          <j:otherwise>
+            <div class="bci-ai-not-run">AI analysis has not been run yet for this build.</div>
+          </j:otherwise>
+        </j:choose>
+
+        <j:if test="${it.canRunAi() and it.isAiEnabledGlobally()}">
+          <f:form method="post" action="runAi" name="runAi">
+            <f:submit value="${it.hasAiAssessment() ? 'Re-run AI Analysis' : 'Run AI Analysis'}"/>
+          </f:form>
+        </j:if>
+        <j:if test="${it.canRunAi() and !it.isAiEnabledGlobally()}">
+          <p class="bci-muted">
+            Enable AI analysis under "Manage Jenkins &#8594; System" to use this feature.
+          </p>
+        </j:if>
+      </div>
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

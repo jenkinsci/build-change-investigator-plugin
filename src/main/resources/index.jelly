@@ -1,0 +1,7 @@
+<?jelly escape-by-default='true'?>
+<div>
+  Identifies which change between the last successful build and a failed build most likely
+  caused the regression. Combines deterministic evidence collected directly from Jenkins
+  (SCM changes since the last success, a redacted failure log excerpt, build metadata) with an
+  optional, clearly-separated AI assessment from an OpenAI-compatible provider you configure.
+</div>
