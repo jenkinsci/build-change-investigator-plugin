@@ -147,6 +147,17 @@ public final class BuildInvestigationEvidence implements Serializable {
         return logExcerpt;
     }
 
+    /**
+     * The log excerpt as a single newline-joined string, for display. Views should prefer this
+     * over iterating {@link #getLogExcerpt()} line-by-line in a template: a Jelly
+     * {@code <j:forEach>} that tries to emit a literal newline between iterations is at the
+     * mercy of the Jelly/XML parser's whitespace handling and can silently collapse those
+     * newlines, running every line together in the rendered page.
+     */
+    public String getLogExcerptText() {
+        return String.join("\n", logExcerpt);
+    }
+
     public boolean isLogExcerptTruncated() {
         return logExcerptTruncated;
     }

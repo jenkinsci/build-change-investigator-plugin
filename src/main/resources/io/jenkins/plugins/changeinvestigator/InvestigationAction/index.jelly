@@ -139,8 +139,7 @@
         </div>
         <j:choose>
           <j:when test="${it.evidence.logAvailable}">
-            <div class="bci-log-excerpt"><pre><j:forEach var="line" items="${it.evidence.logExcerpt}">${line}
-</j:forEach></pre></div>
+            <div class="bci-log-excerpt"><pre>${it.evidence.logExcerptText}</pre></div>
             <j:if test="${it.evidence.logExcerptTruncated}">
               <p class="bci-muted">Excerpt truncated to the configured maximum size.</p>
             </j:if>
