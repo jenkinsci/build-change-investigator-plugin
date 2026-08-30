@@ -68,9 +68,23 @@ cited hypothesis rather than a raw diff view.
 
 ## Screenshots
 
-*(Screenshots are not included in this repository; run the [local demo](#local-demo) below to
-see the actual build page UI, which shows the "BUILD COMPARISON", "OBSERVED EVIDENCE", and "AI
-ASSESSMENT" sections described under [Usage](#usage).)*
+## Investigation overview
+
+Build Change Investigator compares the failed build with the last successful build, shows the changes between them, and extracts relevant failure-log evidence.
+
+![Build Change Investigator overview](demo/screenshots/investigation-overview.png)
+
+### AI-assisted regression analysis
+
+When AI analysis is enabled, the plugin uses the observed Jenkins evidence to identify the most likely regression-causing change, explain why, cite supporting evidence, and recommend verification steps.
+
+![AI-assisted regression analysis](demo/screenshots/investigation-ai-mock.png)
+
+### Installed in Jenkins
+
+Build Change Investigator runs as a native Jenkins plugin and adds a **Build Change Investigation** action to failed builds.
+
+![Build Change Investigator installed in Jenkins](demo/screenshots/plugin-installed.png)
 
 ## Requirements
 
