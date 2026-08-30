@@ -44,27 +44,26 @@ collects everything Jenkins knows about what changed since then, pulls out the p
 failure log that look relevant, and (optionally) asks an AI model to point at the most likely
 culprit - citing the specific evidence it used, with an explicit confidence level.
 
-## How this differs from generic AI error-explanation plugins
+## What makes Build Change Investigator different
 
-Plugins like [Explain Error](https://github.com/jenkinsci/explain-error-plugin) already answer
-*"explain this Jenkins error"* well, by analyzing a failed build's console output in isolation.
-That's a genuinely useful and different job from this plugin's.
+Build Change Investigator focuses specifically on **regression correlation**.
 
-Build Change Investigator's job is specifically:
+It compares a failed build with the last successful build, collects the changes between them, correlates those changes with failure evidence, and optionally produces an AI-assisted hypothesis about which change most likely introduced the regression.
 
-> Which change between the last successful build and this failure most likely **introduced**
-> the regression?
+Its core question is:
 
-That means its core evidence is the **diff in inputs to the build** (commits, changed files,
-authors) correlated against the failure - not just the failure text on its own. It is
-complementary to, not a replacement for, generic error explanation: you might use Explain Error
-to understand *what* broke, and this plugin to understand *which change* broke it.
+> **Which change since the last successful build most likely caused this failure?**
 
-[Last Changes](https://plugins.jenkins.io/last-changes/) is closer in spirit - it also compares
-revisions - but it focuses on visualizing a diff between two builds/revisions in general. This
-plugin is narrower and more opinionated: it always anchors on "last success vs. this failure,"
-always folds in the failure log, and adds an optional AI layer that produces a specific,
-cited hypothesis rather than a raw diff view.
+The plugin combines:
+
+- the last successful build
+- the current failed build
+- SCM commits and changed files
+- revision and author information
+- relevant failure-log evidence
+- optional AI-assisted analysis with cited supporting evidence and an explicit confidence level
+
+The deterministic evidence remains useful even when AI analysis is disabled.
 
 ## Screenshots
 
