@@ -12,10 +12,10 @@ import hudson.model.FreeStyleBuild;
 import hudson.model.FreeStyleProject;
 import hudson.model.Item;
 import hudson.model.Result;
-import jenkins.model.Jenkins;
 import io.jenkins.plugins.changeinvestigator.config.ChangeInvestigatorGlobalConfiguration;
 import io.jenkins.plugins.changeinvestigator.testutil.FakeChangeLogSCM;
 import io.jenkins.plugins.changeinvestigator.testutil.MockAiServer;
+import jenkins.model.Jenkins;
 import org.htmlunit.html.HtmlForm;
 import org.htmlunit.html.HtmlPage;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
@@ -63,17 +63,17 @@ class InvestigationActionTest {
 
     @Test
     void runningAiWhileEnabledCallsConfiguredEndpointAndCachesResult(JenkinsRule jenkins) throws Exception {
-        try (MockAiServer mock = MockAiServer.start(
-                "{\"choices\":[{\"message\":{\"content\":\"{"
-                        + "\\\"mostLikelyCause\\\":\\\"dependency bump\\\","
-                        + "\\\"confidence\\\":\\\"HIGH\\\","
-                        + "\\\"reasoning\\\":\\\"only change present\\\","
-                        + "\\\"supportingEvidence\\\":[],\\\"recommendedChecks\\\":[],"
-                        + "\\\"insufficientEvidence\\\":false}\"}}]}")) {
+        try (MockAiServer mock = MockAiServer.start("{\"choices\":[{\"message\":{\"content\":\"{"
+                + "\\\"mostLikelyCause\\\":\\\"dependency bump\\\","
+                + "\\\"confidence\\\":\\\"HIGH\\\","
+                + "\\\"reasoning\\\":\\\"only change present\\\","
+                + "\\\"supportingEvidence\\\":[],\\\"recommendedChecks\\\":[],"
+                + "\\\"insufficientEvidence\\\":false}\"}}]}")) {
 
-            SystemCredentialsProvider.getInstance().getCredentials().add(
-                    new StringCredentialsImpl(CredentialsScope.GLOBAL, "test-cred", "desc",
-                            hudson.util.Secret.fromString("test-token")));
+            SystemCredentialsProvider.getInstance()
+                    .getCredentials()
+                    .add(new StringCredentialsImpl(
+                            CredentialsScope.GLOBAL, "test-cred", "desc", hudson.util.Secret.fromString("test-token")));
 
             ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();
             config.setAiEnabled(true);
@@ -99,7 +99,9 @@ class InvestigationActionTest {
     void usersWithoutPermissionCannotTriggerAiAnalysis(JenkinsRule jenkins) throws Exception {
         jenkins.jenkins.setSecurityRealm(jenkins.createDummySecurityRealm());
         jenkins.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy()
-                .grant(Jenkins.READ, Item.READ).everywhere().to("viewer"));
+                .grant(Jenkins.READ, Item.READ)
+                .everywhere()
+                .to("viewer"));
         ChangeInvestigatorGlobalConfiguration.get().setAiEnabled(true);
 
         FreeStyleBuild build = createFailedBuild(jenkins, "no-permission");
@@ -108,7 +110,8 @@ class InvestigationActionTest {
         HtmlPage page = wc.getPage(build, "change-investigation/");
         // Without RUN_AI_ANALYSIS (and it is not implied by READ alone), the button must not
         // even be rendered - but assert the server-side check too, directly.
-        assertTrue(page.getForms().stream().noneMatch(f -> "runAi".equals(f.getNameAttribute())),
+        assertTrue(
+                page.getForms().stream().noneMatch(f -> "runAi".equals(f.getNameAttribute())),
                 "the Run AI Analysis form must not be rendered for a user without permission");
 
         InvestigationAction action = build.getAction(InvestigationAction.class);

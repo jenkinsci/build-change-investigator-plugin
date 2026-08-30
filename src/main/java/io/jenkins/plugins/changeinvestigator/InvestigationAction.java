@@ -2,7 +2,6 @@ package io.jenkins.plugins.changeinvestigator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import hudson.model.Run;
-import jenkins.model.RunAction2;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisService;
 import io.jenkins.plugins.changeinvestigator.ai.AiAssessment;
 import io.jenkins.plugins.changeinvestigator.config.ChangeInvestigatorGlobalConfiguration;
@@ -11,6 +10,7 @@ import io.jenkins.plugins.changeinvestigator.security.ChangeInvestigatorPermissi
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jenkins.model.RunAction2;
 import org.kohsuke.stapler.StaplerResponse2;
 import org.kohsuke.stapler.verb.POST;
 

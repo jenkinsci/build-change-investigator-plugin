@@ -26,7 +26,8 @@ public final class AiAnalysisService {
         AiResponseParser parser = new AiResponseParser(objectMapper, config.model());
 
         try {
-            String rawContent = client.chatCompletion(promptBuilder.systemPrompt(), promptBuilder.userContent(evidence));
+            String rawContent =
+                    client.chatCompletion(promptBuilder.systemPrompt(), promptBuilder.userContent(evidence));
             return parser.parse(rawContent);
         } catch (AiAnalysisException e) {
             LOGGER.log(Level.INFO, "AI analysis unavailable (" + e.getKind() + "): " + e.getMessage());
@@ -34,14 +35,15 @@ public final class AiAnalysisService {
         } catch (RuntimeException e) {
             // Defensive: an AI provider or parsing edge case must never break the build page.
             LOGGER.log(Level.WARNING, "Unexpected error during AI analysis", e);
-            return AiAssessment.failed("Unexpected error during AI analysis: " + e.getClass().getSimpleName());
+            return AiAssessment.failed(
+                    "Unexpected error during AI analysis: " + e.getClass().getSimpleName());
         }
     }
 
     private static String describeFailure(AiAnalysisException e) {
         return switch (e.getKind()) {
             case CREDENTIALS_MISSING, CONFIGURATION_INVALID ->
-                    "AI analysis is not configured correctly: " + e.getMessage();
+                "AI analysis is not configured correctly: " + e.getMessage();
             case TIMEOUT -> "AI provider did not respond in time: " + e.getMessage();
             case CONNECTION_FAILED -> "Could not reach the AI provider: " + e.getMessage();
             case HTTP_ERROR -> "AI provider returned an error: " + e.getMessage();

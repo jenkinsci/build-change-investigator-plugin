@@ -25,8 +25,7 @@ class EvidenceCollectorTest {
         FreeStyleBuild build1 = jenkins.buildAndAssertSuccess(project);
 
         project.setScm(new FakeChangeLogSCM(List.of(
-                new FakeChangeLogSCM.FakeCommit("abc123", "alice", "Bump dependency version",
-                        List.of("pom.xml")))));
+                new FakeChangeLogSCM.FakeCommit("abc123", "alice", "Bump dependency version", List.of("pom.xml")))));
         project.getBuildersList().add(new FailureBuilder());
         FreeStyleBuild build2 = project.scheduleBuild2(0).get();
         jenkins.assertBuildStatus(Result.FAILURE, build2);
@@ -40,7 +39,8 @@ class EvidenceCollectorTest {
         assertTrue(evidence.isChangeDataAvailable());
         assertEquals(1, evidence.getChangeEntries().size());
         assertEquals("abc123", evidence.getChangeEntries().get(0).getCommitId());
-        assertEquals("Bump dependency version", evidence.getChangeEntries().get(0).getMessage());
+        assertEquals(
+                "Bump dependency version", evidence.getChangeEntries().get(0).getMessage());
         assertTrue(evidence.getWarnings().isEmpty(), evidence.getWarnings().toString());
     }
 
@@ -51,14 +51,14 @@ class EvidenceCollectorTest {
         project.setScm(FakeChangeLogSCM.none());
         jenkins.buildAndAssertSuccess(project);
 
-        project.setScm(new FakeChangeLogSCM(List.of(
-                new FakeChangeLogSCM.FakeCommit("commit-1", "alice", "First bad change", List.of("a.txt")))));
+        project.setScm(new FakeChangeLogSCM(
+                List.of(new FakeChangeLogSCM.FakeCommit("commit-1", "alice", "First bad change", List.of("a.txt")))));
         project.getBuildersList().add(new FailureBuilder());
         FreeStyleBuild build2 = project.scheduleBuild2(0).get();
         jenkins.assertBuildStatus(Result.FAILURE, build2);
 
-        project.setScm(new FakeChangeLogSCM(List.of(
-                new FakeChangeLogSCM.FakeCommit("commit-2", "bob", "Second change", List.of("b.txt")))));
+        project.setScm(new FakeChangeLogSCM(
+                List.of(new FakeChangeLogSCM.FakeCommit("commit-2", "bob", "Second change", List.of("b.txt")))));
         FreeStyleBuild build3 = project.scheduleBuild2(0).get();
         jenkins.assertBuildStatus(Result.FAILURE, build3);
 
@@ -83,7 +83,8 @@ class EvidenceCollectorTest {
         BuildInvestigationEvidence evidence = new EvidenceCollector(50_000).collect(build1);
 
         assertFalse(evidence.isPreviousSuccessfulBuildFound());
-        assertTrue(evidence.getWarnings().stream().anyMatch(w -> w.toLowerCase().contains("first build")),
+        assertTrue(
+                evidence.getWarnings().stream().anyMatch(w -> w.toLowerCase().contains("first build")),
                 evidence.getWarnings().toString());
     }
 
@@ -100,7 +101,8 @@ class EvidenceCollectorTest {
         BuildInvestigationEvidence evidence = new EvidenceCollector(50_000).collect(build2);
 
         assertTrue(evidence.getChangeEntries().isEmpty());
-        assertTrue(evidence.getWarnings().stream().anyMatch(w -> w.toLowerCase().contains("no changes were reported")),
+        assertTrue(
+                evidence.getWarnings().stream().anyMatch(w -> w.toLowerCase().contains("no changes were reported")),
                 evidence.getWarnings().toString());
     }
 

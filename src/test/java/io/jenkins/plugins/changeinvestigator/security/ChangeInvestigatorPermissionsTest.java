@@ -27,9 +27,12 @@ class ChangeInvestigatorPermissionsTest {
     void onlyUsersGrantedThePermissionCanRunAnalysis(JenkinsRule jenkins) throws Exception {
         jenkins.jenkins.setSecurityRealm(jenkins.createDummySecurityRealm());
         jenkins.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy()
-                .grant(Jenkins.READ, Item.READ).everywhere().to("readOnlyUser")
+                .grant(Jenkins.READ, Item.READ)
+                .everywhere()
+                .to("readOnlyUser")
                 .grant(Jenkins.READ, Item.READ, ChangeInvestigatorPermissions.RUN_AI_ANALYSIS)
-                        .everywhere().to("investigatorUser"));
+                .everywhere()
+                .to("investigatorUser"));
 
         FreeStyleProject project = jenkins.createFreeStyleProject("permission-test");
 
@@ -46,12 +49,15 @@ class ChangeInvestigatorPermissionsTest {
     void buildPermissionAloneDoesNotImplyAiAnalysisPermission(JenkinsRule jenkins) throws Exception {
         jenkins.jenkins.setSecurityRealm(jenkins.createDummySecurityRealm());
         jenkins.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy()
-                .grant(Jenkins.READ, Item.READ, Item.BUILD).everywhere().to("builderUser"));
+                .grant(Jenkins.READ, Item.READ, Item.BUILD)
+                .everywhere()
+                .to("builderUser"));
 
         FreeStyleProject project = jenkins.createFreeStyleProject("build-only-test");
 
         try (ACLContext ctx = ACL.as2(User.getById("builderUser", true).impersonate2())) {
-            assertFalse(project.hasPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS),
+            assertFalse(
+                    project.hasPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS),
                     "Being trusted to trigger builds must not, by itself, authorize AI analysis");
         }
     }
@@ -60,12 +66,15 @@ class ChangeInvestigatorPermissionsTest {
     void jenkinsAdministratorHasAiAnalysisPermissionWithoutExplicitGrant(JenkinsRule jenkins) throws Exception {
         jenkins.jenkins.setSecurityRealm(jenkins.createDummySecurityRealm());
         jenkins.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy()
-                .grant(Jenkins.ADMINISTER).everywhere().to("adminUser"));
+                .grant(Jenkins.ADMINISTER)
+                .everywhere()
+                .to("adminUser"));
 
         FreeStyleProject project = jenkins.createFreeStyleProject("admin-test");
 
         try (ACLContext ctx = ACL.as2(User.getById("adminUser", true).impersonate2())) {
-            assertTrue(project.hasPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS),
+            assertTrue(
+                    project.hasPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS),
                     "Jenkins.ADMINISTER should imply the plugin's RUN_AI_ANALYSIS permission");
         }
     }

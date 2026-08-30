@@ -17,8 +17,7 @@ class OpenAiCompatibleClientTest {
         try (MockAiServer mock = MockAiServer.start(
                 "{\"choices\":[{\"message\":{\"content\":\"{\\\"mostLikelyCause\\\":\\\"x\\\"}\"}}]}")) {
 
-            AiProviderConfig config = new AiProviderConfig(
-                    mock.baseUrl(), "test-model", "s3cr3t-token", 5, 0.2, 1000);
+            AiProviderConfig config = new AiProviderConfig(mock.baseUrl(), "test-model", "s3cr3t-token", 5, 0.2, 1000);
             OpenAiCompatibleClient client = new OpenAiCompatibleClient(config, objectMapper);
 
             String content = client.chatCompletion("system prompt", "user content");
@@ -32,9 +31,9 @@ class OpenAiCompatibleClientTest {
     @Test
     void throwsHttpErrorOnNon2xxStatus() throws Exception {
         try (MockAiServer mock = MockAiServer.startWithStatus(500, "{\"error\":\"boom\"}")) {
-            AiProviderConfig config = new AiProviderConfig(
-                    mock.baseUrl(), "m", "token", 5, 0.2, 1000);
-            AiAnalysisException ex = assertThrows(AiAnalysisException.class,
+            AiProviderConfig config = new AiProviderConfig(mock.baseUrl(), "m", "token", 5, 0.2, 1000);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class,
                     () -> new OpenAiCompatibleClient(config, objectMapper).chatCompletion("s", "u"));
             assertEquals(AiAnalysisException.Kind.HTTP_ERROR, ex.getKind());
         }
@@ -43,9 +42,9 @@ class OpenAiCompatibleClientTest {
     @Test
     void throwsMalformedResponseWhenEnvelopeIsNotJson() throws Exception {
         try (MockAiServer mock = MockAiServer.start("not json")) {
-            AiProviderConfig config = new AiProviderConfig(
-                    mock.baseUrl(), "m", "token", 5, 0.2, 1000);
-            AiAnalysisException ex = assertThrows(AiAnalysisException.class,
+            AiProviderConfig config = new AiProviderConfig(mock.baseUrl(), "m", "token", 5, 0.2, 1000);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class,
                     () -> new OpenAiCompatibleClient(config, objectMapper).chatCompletion("s", "u"));
             assertEquals(AiAnalysisException.Kind.MALFORMED_RESPONSE, ex.getKind());
         }
@@ -54,19 +53,21 @@ class OpenAiCompatibleClientTest {
     @Test
     void throwsConnectionFailedWhenServerUnreachable() {
         // Nothing is listening on this port.
-        AiProviderConfig config = new AiProviderConfig(
-                "http://127.0.0.1:1", "m", "token", 2, 0.2, 1000);
-        AiAnalysisException ex = assertThrows(AiAnalysisException.class,
+        AiProviderConfig config = new AiProviderConfig("http://127.0.0.1:1", "m", "token", 2, 0.2, 1000);
+        AiAnalysisException ex = assertThrows(
+                AiAnalysisException.class,
                 () -> new OpenAiCompatibleClient(config, objectMapper).chatCompletion("s", "u"));
-        assertTrue(ex.getKind() == AiAnalysisException.Kind.CONNECTION_FAILED
-                || ex.getKind() == AiAnalysisException.Kind.TIMEOUT, ex.getKind().toString());
+        assertTrue(
+                ex.getKind() == AiAnalysisException.Kind.CONNECTION_FAILED
+                        || ex.getKind() == AiAnalysisException.Kind.TIMEOUT,
+                ex.getKind().toString());
     }
 
     @Test
     void throwsCredentialsMissingWhenTokenAbsent() {
-        AiProviderConfig config = new AiProviderConfig(
-                "http://127.0.0.1:12345", "m", "", 5, 0.2, 1000);
-        AiAnalysisException ex = assertThrows(AiAnalysisException.class,
+        AiProviderConfig config = new AiProviderConfig("http://127.0.0.1:12345", "m", "", 5, 0.2, 1000);
+        AiAnalysisException ex = assertThrows(
+                AiAnalysisException.class,
                 () -> new OpenAiCompatibleClient(config, objectMapper).chatCompletion("s", "u"));
         assertEquals(AiAnalysisException.Kind.CREDENTIALS_MISSING, ex.getKind());
     }

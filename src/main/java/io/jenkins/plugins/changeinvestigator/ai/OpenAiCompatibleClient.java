@@ -34,21 +34,19 @@ public final class OpenAiCompatibleClient {
      */
     public String chatCompletion(String systemPrompt, String userContent) throws AiAnalysisException {
         if (!config.hasApiToken()) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.CREDENTIALS_MISSING,
-                    "No API token is configured for AI analysis.");
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.CREDENTIALS_MISSING, "No API token is configured for AI analysis.");
         }
         if (config.baseUrl() == null || config.baseUrl().isBlank()) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.CONFIGURATION_INVALID,
-                    "No base URL is configured for AI analysis.");
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.CONFIGURATION_INVALID, "No base URL is configured for AI analysis.");
         }
 
         String url = stripTrailingSlash(config.baseUrl()) + "/chat/completions";
         String requestBody = buildRequestBody(systemPrompt, userContent);
 
         Duration timeout = Duration.ofSeconds(Math.max(1, config.timeoutSeconds()));
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(timeout)
-                .build();
+        HttpClient client = HttpClient.newBuilder().connectTimeout(timeout).build();
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -62,24 +60,31 @@ public final class OpenAiCompatibleClient {
         try {
             response = client.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (HttpTimeoutException e) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.TIMEOUT,
-                    "Timed out waiting for the AI provider after " + config.timeoutSeconds() + "s.", e);
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.TIMEOUT,
+                    "Timed out waiting for the AI provider after " + config.timeoutSeconds() + "s.",
+                    e);
         } catch (IOException e) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.CONNECTION_FAILED,
-                    "Could not connect to the AI provider: " + e.getMessage(), e);
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.CONNECTION_FAILED,
+                    "Could not connect to the AI provider: " + e.getMessage(),
+                    e);
         } catch (java.io.UncheckedIOException e) {
             // HttpClient's internal async plumbing can surface connection failures wrapped this
             // way rather than as a plain IOException; treat it the same.
-            throw new AiAnalysisException(AiAnalysisException.Kind.CONNECTION_FAILED,
-                    "Could not connect to the AI provider: " + e.getMessage(), e);
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.CONNECTION_FAILED,
+                    "Could not connect to the AI provider: " + e.getMessage(),
+                    e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new AiAnalysisException(AiAnalysisException.Kind.CONNECTION_FAILED,
-                    "AI analysis was interrupted.", e);
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.CONNECTION_FAILED, "AI analysis was interrupted.", e);
         }
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.HTTP_ERROR,
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.HTTP_ERROR,
                     "The AI provider returned HTTP " + response.statusCode() + ": " + snippet(response.body()));
         }
 
@@ -105,12 +110,15 @@ public final class OpenAiCompatibleClient {
         try {
             root = objectMapper.readTree(responseBody);
         } catch (Exception e) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.MALFORMED_RESPONSE,
-                    "The AI provider's response envelope was not valid JSON.", e);
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.MALFORMED_RESPONSE,
+                    "The AI provider's response envelope was not valid JSON.",
+                    e);
         }
         JsonNode content = root.path("choices").path(0).path("message").path("content");
         if (content.isMissingNode() || content.isNull()) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.MALFORMED_RESPONSE,
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.MALFORMED_RESPONSE,
                     "The AI provider's response did not contain choices[0].message.content.");
         }
         return content.asText();

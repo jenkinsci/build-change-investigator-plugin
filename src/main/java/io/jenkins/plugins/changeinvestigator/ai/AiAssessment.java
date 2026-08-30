@@ -21,7 +21,11 @@ public final class AiAssessment implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    private enum State { DISABLED, FAILED, COMPLETED }
+    private enum State {
+        DISABLED,
+        FAILED,
+        COMPLETED
+    }
 
     private final State state;
     private final String errorMessage;
@@ -36,18 +40,25 @@ public final class AiAssessment implements Serializable {
     private final String modelUsed;
     private final long generatedAtMillis;
 
-    private AiAssessment(State state, String errorMessage, String mostLikelyCause, Confidence confidence,
-                          String reasoning, List<String> supportingEvidence, List<String> recommendedChecks,
-                          boolean insufficientEvidence, String modelUsed, long generatedAtMillis) {
+    private AiAssessment(
+            State state,
+            String errorMessage,
+            String mostLikelyCause,
+            Confidence confidence,
+            String reasoning,
+            List<String> supportingEvidence,
+            List<String> recommendedChecks,
+            boolean insufficientEvidence,
+            String modelUsed,
+            long generatedAtMillis) {
         this.state = state;
         this.errorMessage = errorMessage;
         this.mostLikelyCause = mostLikelyCause;
         this.confidence = confidence;
         this.reasoning = reasoning;
-        this.supportingEvidence = supportingEvidence == null
-                ? Collections.emptyList() : List.copyOf(supportingEvidence);
-        this.recommendedChecks = recommendedChecks == null
-                ? Collections.emptyList() : List.copyOf(recommendedChecks);
+        this.supportingEvidence =
+                supportingEvidence == null ? Collections.emptyList() : List.copyOf(supportingEvidence);
+        this.recommendedChecks = recommendedChecks == null ? Collections.emptyList() : List.copyOf(recommendedChecks);
         this.insufficientEvidence = insufficientEvidence;
         this.modelUsed = modelUsed;
         this.generatedAtMillis = generatedAtMillis;
@@ -58,15 +69,29 @@ public final class AiAssessment implements Serializable {
     }
 
     public static AiAssessment failed(String errorMessage) {
-        return new AiAssessment(State.FAILED, errorMessage, null, null, null, null, null, false, null,
-                System.currentTimeMillis());
+        return new AiAssessment(
+                State.FAILED, errorMessage, null, null, null, null, null, false, null, System.currentTimeMillis());
     }
 
-    public static AiAssessment completed(String mostLikelyCause, Confidence confidence, String reasoning,
-                                          List<String> supportingEvidence, List<String> recommendedChecks,
-                                          boolean insufficientEvidence, String modelUsed) {
-        return new AiAssessment(State.COMPLETED, null, mostLikelyCause, confidence, reasoning, supportingEvidence,
-                recommendedChecks, insufficientEvidence, modelUsed, System.currentTimeMillis());
+    public static AiAssessment completed(
+            String mostLikelyCause,
+            Confidence confidence,
+            String reasoning,
+            List<String> supportingEvidence,
+            List<String> recommendedChecks,
+            boolean insufficientEvidence,
+            String modelUsed) {
+        return new AiAssessment(
+                State.COMPLETED,
+                null,
+                mostLikelyCause,
+                confidence,
+                reasoning,
+                supportingEvidence,
+                recommendedChecks,
+                insufficientEvidence,
+                modelUsed,
+                System.currentTimeMillis());
     }
 
     public boolean isDisabled() {

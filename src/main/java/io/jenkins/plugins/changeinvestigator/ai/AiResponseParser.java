@@ -19,7 +19,8 @@ import java.util.regex.Pattern;
  */
 public final class AiResponseParser {
 
-    private static final Pattern CODE_FENCE = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CODE_FENCE =
+            Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
 
     private final ObjectMapper objectMapper;
     private final String modelUsed;
@@ -31,8 +32,8 @@ public final class AiResponseParser {
 
     public AiAssessment parse(String rawContent) throws AiAnalysisException {
         if (rawContent == null || rawContent.isBlank()) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.MALFORMED_RESPONSE,
-                    "The AI provider returned an empty response.");
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.MALFORMED_RESPONSE, "The AI provider returned an empty response.");
         }
 
         String jsonCandidate = extractJson(rawContent);
@@ -40,13 +41,15 @@ public final class AiResponseParser {
         try {
             node = objectMapper.readTree(jsonCandidate);
         } catch (Exception e) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.MALFORMED_RESPONSE,
-                    "The AI provider's response was not valid JSON and could not be parsed.", e);
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.MALFORMED_RESPONSE,
+                    "The AI provider's response was not valid JSON and could not be parsed.",
+                    e);
         }
 
         if (!node.isObject()) {
-            throw new AiAnalysisException(AiAnalysisException.Kind.MALFORMED_RESPONSE,
-                    "The AI provider's response was not a JSON object.");
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.MALFORMED_RESPONSE, "The AI provider's response was not a JSON object.");
         }
 
         String mostLikelyCause = textOrNull(node, "mostLikelyCause");
@@ -59,12 +62,19 @@ public final class AiResponseParser {
         if ((mostLikelyCause == null || mostLikelyCause.isBlank()) && !insufficientEvidence) {
             // A model that gave no cause and did not flag insufficient evidence is not usable;
             // treat it as malformed rather than silently showing an empty assessment as fact.
-            throw new AiAnalysisException(AiAnalysisException.Kind.MALFORMED_RESPONSE,
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.MALFORMED_RESPONSE,
                     "The AI provider's response did not include a usable assessment.");
         }
 
-        return AiAssessment.completed(mostLikelyCause, confidence, reasoning, supportingEvidence,
-                recommendedChecks, insufficientEvidence, modelUsed);
+        return AiAssessment.completed(
+                mostLikelyCause,
+                confidence,
+                reasoning,
+                supportingEvidence,
+                recommendedChecks,
+                insufficientEvidence,
+                modelUsed);
     }
 
     private static String extractJson(String rawContent) {

@@ -10,8 +10,7 @@ class BuildInvestigationEvidenceTest {
     @Test
     void logExcerptTextJoinsLinesWithRealNewlines() {
         BuildInvestigationEvidence evidence = BuildInvestigationEvidence.builder()
-                .log(List.of("+ bash build.sh", "Running the demo build step...", "ERROR: boom"),
-                        true, false, 3)
+                .log(List.of("+ bash build.sh", "Running the demo build step...", "ERROR: boom"), true, false, 3)
                 .build();
 
         // Regression guard: the build page's index.jelly renders this value directly inside a
@@ -19,8 +18,7 @@ class BuildInvestigationEvidenceTest {
         // view built this text itself with a <j:forEach> that emitted a newline as literal
         // Jelly-source whitespace, which the XML/Jelly parser silently collapsed, running every
         // log line together on the rendered page.
-        assertEquals("+ bash build.sh\nRunning the demo build step...\nERROR: boom",
-                evidence.getLogExcerptText());
+        assertEquals("+ bash build.sh\nRunning the demo build step...\nERROR: boom", evidence.getLogExcerptText());
     }
 
     @Test

@@ -30,8 +30,8 @@ class InvestigationRunListenerTest {
         FreeStyleBuild build = project.scheduleBuild2(0).get();
         jenkins.assertBuildStatus(Result.FAILURE, build);
 
-        assertNotNull(build.getAction(InvestigationAction.class),
-                "InvestigationAction should be attached to a failed build");
+        assertNotNull(
+                build.getAction(InvestigationAction.class), "InvestigationAction should be attached to a failed build");
     }
 
     @Test
@@ -41,7 +41,8 @@ class InvestigationRunListenerTest {
 
         FreeStyleBuild build = jenkins.buildAndAssertSuccess(project);
 
-        assertNull(build.getAction(InvestigationAction.class),
+        assertNull(
+                build.getAction(InvestigationAction.class),
                 "InvestigationAction should not be attached to a successful build");
     }
 

@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
@@ -13,19 +11,14 @@
 
   <groupId>io.jenkins.plugins</groupId>
   <artifactId>build-change-investigator</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
+  <version>${changelist}</version>
   <packaging>hpi</packaging>
 
   <name>Build Change Investigator</name>
-  <description>
-    Identifies which change between the last successful build and a failed build
+  <description>Identifies which change between the last successful build and a failed build
     most likely caused the regression, combining deterministic SCM/log evidence
-    with an optional AI assessment.
-  </description>
-  <!-- Pre-hosting repository location. Once this plugin is accepted for official Jenkins
-       hosting (see RELEASE_CHECKLIST.md), the repository moves under the jenkinsci GitHub
-       organization and every URL/SCM reference below must be updated to match. -->
-  <url>https://github.com/InfraGuard-Labs/build-change-investigator</url>
+    with an optional AI assessment.</description>
+  <url>https://github.com/jenkinsci/${project.artifactId}-plugin</url>
 
   <licenses>
     <license>
@@ -34,42 +27,30 @@
     </license>
   </licenses>
 
-  <developers>
-    <developer>
-      <id>azimsiddiqui</id>
-      <name>Azeem Siddiqui</name>
-      <email>azimsiddiqui97@gmail.com</email>
-    </developer>
-  </developers>
-
-  <scm>
-    <connection>scm:git:https://github.com/InfraGuard-Labs/build-change-investigator.git</connection>
-    <developerConnection>scm:git:https://github.com/InfraGuard-Labs/build-change-investigator.git</developerConnection>
-    <url>https://github.com/InfraGuard-Labs/build-change-investigator</url>
+  <scm child.scm.connection.inherit.append.path="false" child.scm.developerConnection.inherit.append.path="false" child.scm.url.inherit.append.path="false">
+    <connection>scm:git:https://github.com/${gitHubRepo}</connection>
+    <developerConnection>scm:git:https://github.com/${gitHubRepo}</developerConnection>
     <tag>HEAD</tag>
+    <url>https://github.com/${gitHubRepo}</url>
   </scm>
 
   <properties>
-    <jenkins.version>2.568.2</jenkins.version>
+    <changelist>999999-SNAPSHOT</changelist>
+    <!-- https://www.jenkins.io/doc/developer/plugin-development/choosing-jenkins-baseline/ -->
     <jenkins.baseline>2.568</jenkins.baseline>
-    <maven.compiler.release>21</maven.compiler.release>
+    <jenkins.version>2.568.2</jenkins.version>
+    <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
+
+    <spotless.check.skip>false</spotless.check.skip>
+    <ban-junit4-imports.skip>false</ban-junit4-imports.skip>
+    <ban-deprecated-stapler.skip>false</ban-deprecated-stapler.skip>
+    <ban-commons-lang-2.skip>false</ban-commons-lang-2.skip>
+    <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
+    <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
+
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <gitHubRepo>InfraGuard-Labs/build-change-investigator</gitHubRepo>
     <spotbugs.skip>false</spotbugs.skip>
   </properties>
-
-  <repositories>
-    <repository>
-      <id>repo.jenkins-ci.org</id>
-      <url>https://repo.jenkins-ci.org/public/</url>
-    </repository>
-  </repositories>
-  <pluginRepositories>
-    <pluginRepository>
-      <id>repo.jenkins-ci.org</id>
-      <url>https://repo.jenkins-ci.org/public/</url>
-    </pluginRepository>
-  </pluginRepositories>
 
   <dependencyManagement>
     <dependencies>
@@ -89,16 +70,16 @@
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>credentials</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.jenkins-ci.plugins</groupId>
-      <artifactId>plain-credentials</artifactId>
-    </dependency>
 
     <!-- Shared Jackson2 databind, wrapped by the Jenkins plugin so we don't
          ship/duplicate our own copy in the classloader -->
     <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>jackson2-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>plain-credentials</artifactId>
     </dependency>
 
     <!-- Test-only -->
@@ -108,6 +89,19 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <repositories>
+    <repository>
+      <id>repo.jenkins-ci.org</id>
+      <url>https://repo.jenkins-ci.org/public/</url>
+    </repository>
+  </repositories>
+  <pluginRepositories>
+    <pluginRepository>
+      <id>repo.jenkins-ci.org</id>
+      <url>https://repo.jenkins-ci.org/public/</url>
+    </pluginRepository>
+  </pluginRepositories>
 
   <build>
     <plugins>

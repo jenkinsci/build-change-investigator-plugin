@@ -19,33 +19,28 @@ Confirm:
 - [ ] `CHANGELOG.md` has an entry for this version (move "Unreleased" items under a new
       version heading with today's date)
 
-## 2. Version bump
+## 2. Versioning and release (Continuous Delivery)
 
-Edit `pom.xml`:
-```xml
-<version>X.Y.Z</version>   <!-- remove -SNAPSHOT for a release build -->
-```
+This plugin uses Jenkins' standard CD setup, **not** manual version bumps or tags:
 
-## 3. Tag and create a GitHub Release
+- `pom.xml`'s `<version>` is `${changelist}`, backed by the `changelist` property
+  (`999999-SNAPSHOT` for local/dev builds) and the `git-changelist-maven-extension`
+  (`.mvn/extensions.xml` + `.mvn/maven.config`), which computes the real released version
+  (`<build-number>.v<git-sha>`) automatically from CI/CD - never edit `<version>` by hand.
+- Releases are produced by `.github/workflows/cd.yaml`, which calls the shared
+  `jenkins-infra/github-reusable-workflows` `maven-cd.yml` workflow. In the default
+  configuration here (`check_run` trigger), a release is drafted automatically whenever CI
+  passes on `master`/`main` and there are merged pull requests of interest; releases can also
+  be triggered manually via **Actions → cd → Run workflow**.
+- The published artifact goes to `repo.jenkins-ci.org` (Artifactory), which feeds the Jenkins
+  Update Center directly - there is no separate "attach the .hpi to a GitHub Release" step to
+  perform manually.
+- Update `CHANGELOG.md` under an "Unreleased" heading as part of the normal PR process; there
+  is no manual "remove -SNAPSHOT" step.
 
-```bash
-git add pom.xml CHANGELOG.md
-git commit -m "Release X.Y.Z"
-git tag -a vX.Y.Z -m "Release X.Y.Z"
-git push origin main --tags
-```
+See https://www.jenkins.io/doc/developer/publishing/releasing-cd/ for the full mechanism.
 
-Then, on GitHub:
-1. Go to **Releases → Draft a new release**.
-2. Choose the `vX.Y.Z` tag.
-3. Title: `X.Y.Z`. Body: copy the relevant section from `CHANGELOG.md`.
-4. Attach `target/build-change-investigator.hpi` as a release asset.
-5. Publish.
-
-After publishing, bump `pom.xml` back to the next `-SNAPSHOT` version for continued development
-and commit that separately.
-
-## 4. Installing the HPI manually on a Jenkins controller
+## 3. Installing the HPI manually on a Jenkins controller
 
 1. Download the `.hpi` from the GitHub Release (or use your local `target/*.hpi` build).
 2. In Jenkins: **Manage Jenkins → Plugins → Advanced settings** tab → **Deploy Plugin** section
@@ -57,7 +52,7 @@ and commit that separately.
    Investigator", confirm it's listed and enabled.
 5. Verify: **Manage Jenkins → System**, confirm the "Build Change Investigator" section appears.
 
-## 5. Testing on a Jenkins controller
+## 4. Testing on a Jenkins controller
 
 - [ ] Run a job that will fail (or use the [demo scenario](demo/README.md)); confirm the
       "Build Change Investigation" link appears on the build page.
@@ -71,30 +66,31 @@ and commit that separately.
       result) still renders correctly on an old build - this proves the `RunAction2`
       persistence (`onLoad`/`onAttached`) is working.
 
-## 6. Future Jenkins plugin-site (Update Center) publication requirements
+## 5. Future Jenkins plugin-site (Update Center) publication requirements
 
-This repository has **not** been published to the official Jenkins Update Center. To do so in
-the future, a maintainer with the appropriate access would need to:
+This repository has **not** been published to the official Jenkins Update Center yet. An
+[official hosting request](https://github.com/jenkins-infra/repository-permissions-updater/issues/5249)
+is open; remaining steps for a maintainer with the appropriate access:
 
-1. Ensure the repository lives under the `jenkinsci` GitHub organization (request via the
-   [Jenkins hosting request process](https://www.jenkins.io/doc/developer/plugin-governance/hosting-a-plugin/)
-   if it does not already).
-2. Confirm CI is green via the shared Jenkins infrastructure (`Jenkinsfile` using the
-   `buildPlugin()` shared library step - not included in this initial scaffold and would need
-   to be added).
-3. Request permission for the plugin's Maven coordinates (`io.jenkins.plugins:build-change-investigator`)
-   via the [Artifactory permissions request](https://www.jenkins.io/doc/developer/publishing/requesting-hosting/).
-4. Release via `mvn release:prepare release:perform` (or the recommended
-   [CD/JEP-229](https://www.jenkins.io/doc/developer/publishing/releasing-cd/) automated
-   pipeline) so the artifact is deployed to `repo.jenkins-ci.org`, which feeds the Update
-   Center.
+1. Get the hosting request approved (`jenkinsci/build-change-investigator-plugin`). This
+   repository already ships everything the Jenkins Hosting Checker requires: the
+   `${changelist}` CD version scheme, `Jenkinsfile`, `.mvn/maven.config` +
+   `.mvn/extensions.xml`, `.github/workflows/cd.yaml` and `jenkins-security-scan.yml`,
+   `.github/CODEOWNERS`, and a Renovate config.
+2. Confirm CI is green on `ci.jenkins.io` (the `Jenkinsfile` here uses the standard
+   `buildPlugin()` step from `jenkins-infra/pipeline-library`).
+3. Once approved, the users listed in the hosting request need Jira
+   (issues.jenkins.io) and Artifactory (repo.jenkins-ci.org) accounts for release permission
+   to take effect - the Hosting Checker re-syncs this hourly.
+4. The actual release then happens automatically via `.github/workflows/cd.yaml` (see
+   [section 2](#2-versioning-and-release-continuous-delivery) above) - no manual
+   `mvn release:prepare release:perform` step is needed.
 5. Add the plugin's metadata (`categories`, description, etc.) as required by the plugin site.
 6. Ensure `SECURITY.md` reporting process aligns with the
-   [Jenkins Security team's process](https://www.jenkins.io/security/) if the plugin will be
-   officially listed.
+   [Jenkins Security team's process](https://www.jenkins.io/security/) once officially listed.
 
-**Do not perform steps 1-4 without explicit authorization** - they publish to shared,
-organization-wide infrastructure.
+**Do not perform step 1 (accepting the hosting request) or push to trigger a release without
+explicit authorization** - these affect shared, organization-wide infrastructure.
 
 ## Known limitations to disclose at release time
 
@@ -103,8 +99,9 @@ Release notes so users have them up front.
 
 ## Files to manually review before public release
 
-- [ ] `pom.xml` - confirm `<developers>`, `<scm>`, and `<url>` point to the actual repository
-      and maintainer(s), not placeholders.
+- [ ] `pom.xml` - confirm `<scm>` and `<url>` point to the actual repository, not placeholders.
+      (There is deliberately no `<developers>` block - the Jenkins Hosting Checker fetches
+      maintainer information from the repository/update-site history instead.)
 - [ ] `README.md` - confirm the GitHub repository URL matches the actual location.
 - [ ] `SECURITY.md` - confirm the security advisory / contact link is correct.
 - [ ] No `.env`, credentials, or personal file paths were accidentally committed

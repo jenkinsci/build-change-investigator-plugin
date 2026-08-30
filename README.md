@@ -6,11 +6,11 @@ most likely responsible for the regression?"**
 A Jenkins plugin focused on regression/change correlation for failed builds - not generic
 AI-powered error explanation.
 
-> **Repository location:** this project currently lives at
-> `https://github.com/InfraGuard-Labs/build-change-investigator` (pre-hosting). If/when it is
-> accepted into the official Jenkins plugin ecosystem, the canonical repository moves under the
-> `jenkinsci` GitHub organization and every URL in this repository (`pom.xml`'s `<url>`/`<scm>`,
-> this README, `SECURITY.md`) will be updated to match at that time - see
+> **Repository location:** an [official Jenkins hosting request](https://github.com/jenkins-infra/repository-permissions-updater/issues/5249)
+> is open for this plugin. `pom.xml`'s `<url>`/`<scm>` already use the canonical
+> `jenkinsci/build-change-investigator-plugin` coordinates required for hosting; until the
+> request is approved, the source itself still lives at
+> `https://github.com/InfraGuard-Labs/build-change-investigator` - see
 > [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md#6-future-jenkins-plugin-site-update-center-publication-requirements).
 
 ## Table of contents

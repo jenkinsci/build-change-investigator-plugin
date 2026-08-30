@@ -144,13 +144,7 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
     }
 
     public AiProviderConfig toProviderConfig() {
-        return new AiProviderConfig(
-                baseUrl,
-                model,
-                resolveApiToken(),
-                timeoutSeconds,
-                temperature,
-                maxLogContextChars);
+        return new AiProviderConfig(baseUrl, model, resolveApiToken(), timeoutSeconds, temperature, maxLogContextChars);
     }
 
     public ListBoxModel doFillCredentialsIdItems(@QueryParameter String credentialsId) {
@@ -198,9 +192,8 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
                 0.0,
                 200);
         try {
-            new OpenAiCompatibleClient(testConfig, new ObjectMapper()).chatCompletion(
-                    "Respond with exactly: {\"ok\":true}",
-                    "Respond with exactly: {\"ok\":true}");
+            new OpenAiCompatibleClient(testConfig, new ObjectMapper())
+                    .chatCompletion("Respond with exactly: {\"ok\":true}", "Respond with exactly: {\"ok\":true}");
             return FormValidation.ok("Connection succeeded.");
         } catch (AiAnalysisException e) {
             LOGGER.log(Level.FINE, "Test connection failed", e);

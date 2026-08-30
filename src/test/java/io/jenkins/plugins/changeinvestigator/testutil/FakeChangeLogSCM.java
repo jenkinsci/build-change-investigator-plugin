@@ -1,6 +1,5 @@
 package io.jenkins.plugins.changeinvestigator.testutil;
 
-import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.Run;
@@ -35,8 +34,7 @@ public class FakeChangeLogSCM extends SCM implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /** One fake commit: id, author, message, affected files. */
-    public record FakeCommit(String id, String author, String message, List<String> files) implements Serializable {
-    }
+    public record FakeCommit(String id, String author, String message, List<String> files) implements Serializable {}
 
     private final List<FakeCommit> commits;
 
@@ -49,8 +47,14 @@ public class FakeChangeLogSCM extends SCM implements Serializable {
     }
 
     @Override
-    public void checkout(Run<?, ?> build, Launcher launcher, FilePath workspace, TaskListener listener,
-                          File changelogFile, hudson.scm.SCMRevisionState baseline) throws IOException {
+    public void checkout(
+            Run<?, ?> build,
+            Launcher launcher,
+            FilePath workspace,
+            TaskListener listener,
+            File changelogFile,
+            hudson.scm.SCMRevisionState baseline)
+            throws IOException {
         if (changelogFile == null) {
             return;
         }
@@ -66,8 +70,8 @@ public class FakeChangeLogSCM extends SCM implements Serializable {
     public ChangeLogParser createChangeLogParser() {
         return new ChangeLogParser() {
             @Override
-            public ChangeLogSet<? extends ChangeLogSet.Entry> parse(Run build, RepositoryBrowser<?> browser,
-                                                                      File changelogFile) throws IOException {
+            public ChangeLogSet<? extends ChangeLogSet.Entry> parse(
+                    Run build, RepositoryBrowser<?> browser, File changelogFile) throws IOException {
                 List<FakeEntry> entries = new ArrayList<>();
                 if (changelogFile.exists()) {
                     try (BufferedReader r = new BufferedReader(new FileReader(changelogFile))) {
@@ -77,8 +81,7 @@ public class FakeChangeLogSCM extends SCM implements Serializable {
                                 continue;
                             }
                             String[] parts = line.split("\t", 4);
-                            List<String> files = parts[2].isEmpty()
-                                    ? List.of() : List.of(parts[2].split(","));
+                            List<String> files = parts[2].isEmpty() ? List.of() : List.of(parts[2].split(","));
                             entries.add(new FakeEntry(parts[0], parts[1], parts[3], files));
                         }
                     }

@@ -25,12 +25,7 @@ public final class ChangeInvestigatorPermissions {
      * separate, redundant grant for every plugin-specific permission.
      */
     public static final Permission RUN_AI_ANALYSIS = new Permission(
-            Item.PERMISSIONS,
-            "RunChangeInvestigationAnalysis",
-            null,
-            Jenkins.ADMINISTER,
-            PermissionScope.ITEM);
+            Item.PERMISSIONS, "RunChangeInvestigationAnalysis", null, Jenkins.ADMINISTER, PermissionScope.ITEM);
 
-    private ChangeInvestigatorPermissions() {
-    }
+    private ChangeInvestigatorPermissions() {}
 }

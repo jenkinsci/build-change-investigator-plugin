@@ -3,13 +3,13 @@ package io.jenkins.plugins.changeinvestigator.evidence;
 import hudson.model.AbstractBuild;
 import hudson.model.Run;
 import hudson.scm.ChangeLogSet;
-import jenkins.scm.RunWithSCM;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jenkins.scm.RunWithSCM;
 
 /**
  * Collects {@link BuildInvestigationEvidence} for a build using only generic, SCM-agnostic
@@ -82,8 +82,8 @@ public final class EvidenceCollector {
         return previousSuccessful;
     }
 
-    private void collectChanges(Run<?, ?> failedBuild, Run<?, ?> previousSuccessful,
-                                 BuildInvestigationEvidence.Builder b) {
+    private void collectChanges(
+            Run<?, ?> failedBuild, Run<?, ?> previousSuccessful, BuildInvestigationEvidence.Builder b) {
         List<ChangeEntry> entries = new ArrayList<>();
         boolean anyChangeLogSupportSeen = false;
         String lastRevision = null;

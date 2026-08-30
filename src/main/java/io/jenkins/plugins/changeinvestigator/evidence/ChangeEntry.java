@@ -25,8 +25,13 @@ public final class ChangeEntry implements Serializable {
     private final long timestampMillis;
     private final int fromBuildNumber;
 
-    public ChangeEntry(String commitId, String author, String message, List<String> affectedFiles,
-                        long timestampMillis, int fromBuildNumber) {
+    public ChangeEntry(
+            String commitId,
+            String author,
+            String message,
+            List<String> affectedFiles,
+            long timestampMillis,
+            int fromBuildNumber) {
         this.commitId = commitId;
         this.author = (author == null || author.isBlank()) ? UNKNOWN_AUTHOR : author;
         this.message = message == null ? "" : message;

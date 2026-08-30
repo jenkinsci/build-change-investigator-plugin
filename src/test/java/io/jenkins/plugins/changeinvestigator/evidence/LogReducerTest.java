@@ -69,8 +69,8 @@ class LogReducerTest {
         assertFalse(joined.contains("[31m"), joined);
         assertTrue(joined.contains("ERROR"), joined);
 
-        LogReducer.Result result2 = LogReducer.reduce(
-                new BufferedReader(new StringReader("[INFO] ERROR count: 0")), 10_000);
+        LogReducer.Result result2 =
+                LogReducer.reduce(new BufferedReader(new StringReader("[INFO] ERROR count: 0")), 10_000);
         String joined2 = String.join("\n", result2.lines);
         assertTrue(joined2.contains("[INFO]"), joined2);
     }

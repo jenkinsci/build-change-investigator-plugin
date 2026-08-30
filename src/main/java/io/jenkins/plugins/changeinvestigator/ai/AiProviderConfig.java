@@ -12,12 +12,7 @@ package io.jenkins.plugins.changeinvestigator.ai;
  * @param temperature    sampling temperature; low by default to favor consistent analysis
  */
 public record AiProviderConfig(
-        String baseUrl,
-        String model,
-        String apiToken,
-        int timeoutSeconds,
-        double temperature,
-        int maxLogContextChars) {
+        String baseUrl, String model, String apiToken, int timeoutSeconds, double temperature, int maxLogContextChars) {
 
     public boolean hasApiToken() {
         return apiToken != null && !apiToken.isBlank();

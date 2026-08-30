@@ -18,20 +18,30 @@ public final class SecretRedactor {
 
     private static final String REDACTED = "[REDACTED]";
 
-    private record RedactionRule(Pattern pattern, String replacement) {
-    }
+    /**
+     * Hard cap on how many characters of a single line the regex rules below are ever run
+     * against. Several of these patterns (the JWT rule in particular, which chains three
+     * sequential unbounded-minimum-length quantifiers around literal dots) can degrade to
+     * polynomial-time matching on adversarially long input. Build console output is
+     * attacker-influenceable (anyone who can affect what a build prints - a crafted commit, a
+     * compromised build step, a verbose tool dumping a huge single line) so this must be bounded
+     * regardless of how unlikely a real secret that long would be. Any remainder past the cap is
+     * replaced outright rather than passed through unredacted, so truncation can never itself
+     * become a way to leak an unredacted secret.
+     */
+    private static final int MAX_LINE_LENGTH = 4_000;
+
+    private record RedactionRule(Pattern pattern, String replacement) {}
 
     private static final List<RedactionRule> RULES = List.of(
             // Authorization: Bearer <token>
             new RedactionRule(
-                    Pattern.compile("(?i)(authorization\\s*:\\s*bearer\\s+)[A-Za-z0-9\\-_.=]+"),
-                    "$1" + REDACTED),
+                    Pattern.compile("(?i)(authorization\\s*:\\s*bearer\\s+)[A-Za-z0-9\\-_.=]+"), "$1" + REDACTED),
             // key=value / key: value assignments for common secret-ish variable names
             new RedactionRule(
-                    Pattern.compile(
-                            "(?i)((?:api[_-]?key|apikey|api[_-]?token|access[_-]?token|secret[_-]?key|"
-                                    + "client[_-]?secret|password|passwd|pwd|auth[_-]?token|private[_-]?key)"
-                                    + "\\s*[:=]\\s*)(['\"]?)[^\\s'\"]{3,}\\2"),
+                    Pattern.compile("(?i)((?:api[_-]?key|apikey|api[_-]?token|access[_-]?token|secret[_-]?key|"
+                            + "client[_-]?secret|password|passwd|pwd|auth[_-]?token|private[_-]?key)"
+                            + "\\s*[:=]\\s*)(['\"]?)[^\\s'\"]{3,}\\2"),
                     "$1$2" + REDACTED + "$2"),
             // Generic bare "token"/"secret" assignment without a qualifying prefix word
             new RedactionRule(
@@ -52,26 +62,30 @@ public final class SecretRedactor {
             // Slack tokens
             new RedactionRule(Pattern.compile("\\bxox[baprs]-[A-Za-z0-9-]{10,}\\b"), REDACTED + "-SLACK-TOKEN"),
             // A lone PEM header/footer line (the multi-line body is handled by redactMultiline)
-            new RedactionRule(
-                    Pattern.compile("-----BEGIN [A-Z ]*PRIVATE KEY-----"), REDACTED + "-PRIVATE-KEY-BLOCK"));
+            new RedactionRule(Pattern.compile("-----BEGIN [A-Z ]*PRIVATE KEY-----"), REDACTED + "-PRIVATE-KEY-BLOCK"));
 
     private static final Pattern PRIVATE_KEY_BLOCK =
             Pattern.compile("-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----");
 
-    private SecretRedactor() {
-    }
+    private SecretRedactor() {}
 
     /** Applies all redaction rules to a single line and returns the (possibly modified) result. */
     public static String redact(String line) {
         if (line == null || line.isEmpty()) {
             return line;
         }
-        String result = line;
+        String bounded = line;
+        boolean lineTruncated = false;
+        if (bounded.length() > MAX_LINE_LENGTH) {
+            bounded = bounded.substring(0, MAX_LINE_LENGTH);
+            lineTruncated = true;
+        }
+        String result = bounded;
         for (RedactionRule rule : RULES) {
             Matcher m = rule.pattern().matcher(result);
             result = m.replaceAll(rule.replacement());
         }
-        return result;
+        return lineTruncated ? result + " [LINE TRUNCATED - exceeded " + MAX_LINE_LENGTH + " characters]" : result;
     }
 
     /**

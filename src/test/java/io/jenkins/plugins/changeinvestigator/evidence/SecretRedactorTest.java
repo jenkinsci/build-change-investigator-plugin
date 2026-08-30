@@ -49,7 +49,8 @@ class SecretRedactorTest {
 
     @Test
     void redactsPrivateKeyBlockAcrossLines() {
-        String text = "before\n-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK...\n-----END RSA PRIVATE KEY-----\nafter";
+        String text =
+                "before\n-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK...\n-----END RSA PRIVATE KEY-----\nafter";
         String redacted = SecretRedactor.redactMultiline(text);
         assertFalse(redacted.contains("MIIBOgIBAAJBAK"), redacted);
         assertTrue(redacted.contains("before"), redacted);
@@ -66,5 +67,30 @@ class SecretRedactorTest {
     void handlesNullAndEmpty() {
         assertEquals(null, SecretRedactor.redact(null));
         assertEquals("", SecretRedactor.redact(""));
+    }
+
+    @Test
+    void boundsProcessingTimeAndOutputSizeForPathologicallyLongLines() {
+        // Build console output is attacker-influenceable (a crafted commit, a compromised build
+        // step, a verbose tool). A single line shaped to have many candidate JWT-style dot
+        // boundaries must not make redaction take unbounded time - this is a regression guard
+        // for a ReDoS-adjacent fix, not a test of exact regex behavior.
+        StringBuilder adversarial = new StringBuilder("ey");
+        for (int i = 0; i < 200_000; i++) {
+            adversarial.append("aaaaaaaaaaaaaaaaaaaa.");
+        }
+        String secretTail = "THIS-SHOULD-NEVER-APPEAR-UNREDACTED";
+        adversarial.append(secretTail);
+
+        long start = System.nanoTime();
+        String redacted = SecretRedactor.redact(adversarial.toString());
+        long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+        assertTrue(elapsedMillis < 5_000, "redact() took " + elapsedMillis + "ms on adversarial input");
+        assertTrue(
+                redacted.length() < adversarial.length(),
+                "output should be bounded, not proportional to the adversarial input");
+        assertFalse(
+                redacted.contains(secretTail), "content past the per-line cap must never be passed through unredacted");
     }
 }

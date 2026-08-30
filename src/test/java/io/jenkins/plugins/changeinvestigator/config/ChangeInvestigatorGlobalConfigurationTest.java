@@ -40,7 +40,8 @@ class ChangeInvestigatorGlobalConfigurationTest {
     void defaultsAreSensibleWhenNothingConfigured(JenkinsRule jenkins) {
         ChangeInvestigatorGlobalConfiguration config = new ChangeInvestigatorGlobalConfiguration();
         assertFalse(config.isAiEnabled());
-        assertEquals(ChangeInvestigatorGlobalConfiguration.DEFAULT_MAX_LOG_CONTEXT_CHARS, config.getMaxLogContextChars());
+        assertEquals(
+                ChangeInvestigatorGlobalConfiguration.DEFAULT_MAX_LOG_CONTEXT_CHARS, config.getMaxLogContextChars());
         assertEquals(ChangeInvestigatorGlobalConfiguration.DEFAULT_TIMEOUT_SECONDS, config.getTimeoutSeconds());
     }
 

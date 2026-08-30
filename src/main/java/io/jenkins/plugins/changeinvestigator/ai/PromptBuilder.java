@@ -75,8 +75,8 @@ public final class PromptBuilder {
             previousSuccess.put("number", evidence.getPreviousSuccessfulBuildNumber());
         }
 
-        root.put("lastKnownRevision",
-                evidence.hasLastKnownRevision() ? evidence.getLastKnownRevision() : "unavailable");
+        root.put(
+                "lastKnownRevision", evidence.hasLastKnownRevision() ? evidence.getLastKnownRevision() : "unavailable");
 
         ObjectNode changes = root.putObject("changes");
         changes.put("dataAvailable", evidence.isChangeDataAvailable());

@@ -51,8 +51,7 @@ public final class LogReducer {
             Pattern.compile("(?i)npm ERR!"),
             Pattern.compile("(?i)BUILD FAILED"));
 
-    private LogReducer() {
-    }
+    private LogReducer() {}
 
     public static final class Result {
         public final List<String> lines;
@@ -124,8 +123,8 @@ public final class LogReducer {
         List<String> finalLines = joined.isEmpty() ? List.of() : List.of(joined.split("\n", -1));
         if (usedFallback && !finalLines.isEmpty()) {
             List<String> withNote = new ArrayList<>();
-            withNote.add("[No explicit error/failure keywords matched; showing the last "
-                    + FALLBACK_TAIL_LINES + " lines of the log instead.]");
+            withNote.add("[No explicit error/failure keywords matched; showing the last " + FALLBACK_TAIL_LINES
+                    + " lines of the log instead.]");
             withNote.addAll(finalLines);
             finalLines = withNote;
         }
