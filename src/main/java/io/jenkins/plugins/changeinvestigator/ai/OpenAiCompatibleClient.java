@@ -3,6 +3,7 @@ package io.jenkins.plugins.changeinvestigator.ai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import hudson.ProxyConfiguration;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -54,7 +55,16 @@ public final class OpenAiCompatibleClient {
         String requestBody = buildRequestBody(systemPrompt, userContent);
 
         Duration timeout = Duration.ofSeconds(Math.max(1, config.timeoutSeconds()));
-        HttpClient client = HttpClient.newBuilder().connectTimeout(timeout).build();
+        // Jenkins-aware builder so outbound calls to the AI provider honor the instance's
+        // configured proxy (and its no-proxy-host exclusions) instead of connecting directly;
+        // see https://javadoc.jenkins.io/hudson/ProxyConfiguration.html#newHttpClientBuilder().
+        // Safe to call with no Jenkins instance present (e.g. plain unit tests): it degrades to
+        // an unproxied builder rather than throwing. connectTimeout() below is set explicitly
+        // afterward so the administrator-configured timeout still wins over the builder's own
+        // Jenkins-wide default.
+        HttpClient client = ProxyConfiguration.newHttpClientBuilder()
+                .connectTimeout(timeout)
+                .build();
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
