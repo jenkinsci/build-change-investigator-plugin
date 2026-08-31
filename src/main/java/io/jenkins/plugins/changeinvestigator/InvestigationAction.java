@@ -104,7 +104,7 @@ public class InvestigationAction implements RunAction2 {
             this.aiAssessment = AiAssessment.disabled();
         } else {
             AiAnalysisService service = new AiAnalysisService(new ObjectMapper());
-            this.aiAssessment = service.analyze(evidence, config.toProviderConfig());
+            this.aiAssessment = service.analyze(evidence, config.toProviderConfig(), config.resolveApiToken());
         }
 
         try {

@@ -21,10 +21,18 @@ import java.time.Duration;
 public final class OpenAiCompatibleClient {
 
     private final AiProviderConfig config;
+
+    // Deliberately a plain field on a non-record class, not a field on AiProviderConfig: this
+    // class never auto-generates toString()/equals()/hashCode(), so holding the token here
+    // cannot leak it through a generated method the way it could on a record. Only ever read
+    // once, to build the Authorization header below.
+    private final String apiToken;
+
     private final ObjectMapper objectMapper;
 
-    public OpenAiCompatibleClient(AiProviderConfig config, ObjectMapper objectMapper) {
+    public OpenAiCompatibleClient(AiProviderConfig config, String apiToken, ObjectMapper objectMapper) {
         this.config = config;
+        this.apiToken = apiToken;
         this.objectMapper = objectMapper;
     }
 
@@ -33,7 +41,7 @@ public final class OpenAiCompatibleClient {
      * (not yet parsed as the evidence-assessment JSON - see {@link AiResponseParser}).
      */
     public String chatCompletion(String systemPrompt, String userContent) throws AiAnalysisException {
-        if (!config.hasApiToken()) {
+        if (apiToken == null || apiToken.isBlank()) {
             throw new AiAnalysisException(
                     AiAnalysisException.Kind.CREDENTIALS_MISSING, "No API token is configured for AI analysis.");
         }
@@ -52,7 +60,7 @@ public final class OpenAiCompatibleClient {
                 .uri(URI.create(url))
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + config.apiToken())
+                .header("Authorization", "Bearer " + apiToken)
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
 

@@ -20,9 +20,13 @@ public final class AiAnalysisService {
         this.objectMapper = objectMapper;
     }
 
-    public AiAssessment analyze(BuildInvestigationEvidence evidence, AiProviderConfig config) {
+    /**
+     * @param apiToken resolved credential plaintext, passed straight through to the HTTP client
+     *                 and never retained by this service or by {@link AiProviderConfig}.
+     */
+    public AiAssessment analyze(BuildInvestigationEvidence evidence, AiProviderConfig config, String apiToken) {
         PromptBuilder promptBuilder = new PromptBuilder(objectMapper);
-        OpenAiCompatibleClient client = new OpenAiCompatibleClient(config, objectMapper);
+        OpenAiCompatibleClient client = new OpenAiCompatibleClient(config, apiToken, objectMapper);
         AiResponseParser parser = new AiResponseParser(objectMapper, config.model());
 
         try {
