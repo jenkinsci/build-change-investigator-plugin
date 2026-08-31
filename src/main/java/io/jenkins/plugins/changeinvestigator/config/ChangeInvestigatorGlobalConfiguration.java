@@ -4,6 +4,7 @@ import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import hudson.BulkChange;
 import hudson.Extension;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
@@ -11,6 +12,7 @@ import hudson.util.Secret;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException;
 import io.jenkins.plugins.changeinvestigator.ai.AiProviderConfig;
 import io.jenkins.plugins.changeinvestigator.ai.OpenAiCompatibleClient;
+import java.io.IOException;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -54,10 +56,22 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
         return GlobalConfiguration.all().get(ChangeInvestigatorGlobalConfiguration.class);
     }
 
+    /**
+     * Binding the whole form calls every {@code @DataBoundSetter}, each of which would
+     * otherwise {@code save()} on its own - {@link BulkChange} defers all of those into the
+     * single {@code save()} that {@code bc.commit()} performs, so submitting this form persists
+     * once instead of once per changed field. Individual setter calls made outside form
+     * binding (script console, init scripts) are unaffected and still save immediately, since
+     * they run with no {@link BulkChange} in scope.
+     */
     @Override
     public boolean configure(StaplerRequest2 req, JSONObject json) throws FormException {
-        req.bindJSON(this, json);
-        save();
+        try (BulkChange bc = new BulkChange(this)) {
+            req.bindJSON(this, json);
+            bc.commit();
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "Failed to save " + getConfigFile(), e);
+        }
         return true;
     }
 
@@ -226,24 +240,14 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
         }
     }
 
-    public FormValidation doCheckTimeoutSeconds(@QueryParameter int value) {
-        // See https://www.jenkins.io/doc/developer/security/form-validation/: prefer
-        // hasPermission() with a harmless ok() fallback over checkPermission(), which would
-        // throw and can break the page for legitimately lower-privileged readers (e.g.
-        // Jenkins.SYSTEM_READ) that this form's Descriptor.configure() plumbing may still route
-        // validation calls through, rather than only ever denying outright.
-        if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
-            return FormValidation.ok();
-        }
-        return value > 0 ? FormValidation.ok() : FormValidation.error("Timeout must be a positive number of seconds.");
-    }
-
-    public FormValidation doCheckMaxLogContextChars(@QueryParameter int value) {
-        if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
-            return FormValidation.ok();
-        }
-        return value > 0 ? FormValidation.ok() : FormValidation.error("Must be a positive number of characters.");
-    }
+    /*
+     * doCheckTimeoutSeconds and doCheckMaxLogContextChars were removed: both fields are plain
+     * positive integers with no domain-specific rule beyond "> 0", which the Jelly-side
+     * clazz="positive-number-required" client-side validation (see config.jelly) now enforces
+     * directly - see https://www.jenkins.io/doc/developer/security/form-validation/ and
+     * core's lib/form/number.jelly. doCheckBaseUrl is kept below because URL-shape validation
+     * ("starts with http:// or https://") is not one of the built-in clazz keywords.
+     */
 
     public FormValidation doCheckBaseUrl(@QueryParameter String value) {
         if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {

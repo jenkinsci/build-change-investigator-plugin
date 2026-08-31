@@ -34,7 +34,11 @@ public final class AiAnalysisService {
                     client.chatCompletion(promptBuilder.systemPrompt(), promptBuilder.userContent(evidence));
             return parser.parse(rawContent);
         } catch (AiAnalysisException e) {
-            LOGGER.log(Level.INFO, "AI analysis unavailable (" + e.getKind() + "): " + e.getMessage());
+            // FINER, not INFO: the same information is already shown to the user via the
+            // AiAssessment.failed() message below, so logging it at INFO would just duplicate
+            // an already-visible, expected condition (e.g. a misconfigured endpoint) into every
+            // controller's default log.
+            LOGGER.log(Level.FINER, "AI analysis unavailable (" + e.getKind() + "): " + e.getMessage());
             return AiAssessment.failed(describeFailure(e));
         } catch (RuntimeException e) {
             // Defensive: an AI provider or parsing edge case must never break the build page.

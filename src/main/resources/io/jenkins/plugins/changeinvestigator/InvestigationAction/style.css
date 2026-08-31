@@ -1,0 +1,51 @@
+/*
+ * Plugin-specific styling for the Build Change Investigation page that has no equivalent in
+ * the Jenkins Design Library (as of the "table", "cards", "spacing" and "colors" pages at
+ * https://weekly.ci.jenkins.io/design-library/). Everything else on this page uses native
+ * Jenkins components/classes directly in the Jelly view instead of custom CSS.
+ *
+ * Every color here comes from a Jenkins-provided CSS custom property so this renders correctly
+ * in both the default theme and the Jenkins Dark Theme plugin - nothing is hard-coded.
+ */
+
+.bci-comparison {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+/* Jenkins has no built-in grid/flex layout for arranging multiple <l:card> elements side by
+   side (see the Design Library "Cards" page), so the cards need an explicit width here. */
+.bci-comparison > .jenkins-card {
+  flex: 1 1 240px;
+}
+
+.bci-log-excerpt {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--text-color-secondary);
+  border-radius: var(--form-input-border-radius, 4px);
+  color: var(--text-color);
+  overflow: auto;
+  max-height: 420px;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bci-confidence-high {
+  color: var(--success-color);
+}
+
+.bci-confidence-medium {
+  color: var(--warning-color);
+}
+
+.bci-confidence-low {
+  color: var(--error-color);
+}
+
+.bci-confidence-unknown {
+  color: var(--text-color-secondary);
+}

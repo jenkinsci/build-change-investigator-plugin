@@ -1,6 +1,6 @@
 package io.jenkins.plugins.changeinvestigator.security;
 
-import hudson.model.Item;
+import hudson.model.Run;
 import hudson.security.Permission;
 import hudson.security.PermissionScope;
 import jenkins.model.Jenkins;
@@ -23,9 +23,21 @@ public final class ChangeInvestigatorPermissions {
      * <p>It is implied by {@code Jenkins.ADMINISTER}, matching normal Jenkins semantics: an
      * instance administrator already has effective access to everything and does not need a
      * separate, redundant grant for every plugin-specific permission.
+     *
+     * <p>Scoped to {@link PermissionScope#RUN} (with group {@link Run#PERMISSIONS}), matching
+     * how Jenkins core itself scopes per-build permissions like {@link Run#DELETE} and
+     * {@link Run#UPDATE}: this permission only ever governs an action taken against a specific
+     * build, never the job/item as a whole. {@code RUN} is contained by {@code ITEM} (see
+     * {@link PermissionScope}), so it remains configurable anywhere an item-scoped permission
+     * would be - per-project and per-folder Matrix Authorization Strategy tables, as well as
+     * the global matrix - without changing where an administrator can grant it.
      */
     public static final Permission RUN_AI_ANALYSIS = new Permission(
-            Item.PERMISSIONS, "RunChangeInvestigationAnalysis", null, Jenkins.ADMINISTER, PermissionScope.ITEM);
+            Run.PERMISSIONS,
+            "RunChangeInvestigationAnalysis",
+            Messages._ChangeInvestigatorPermissions_RunChangeInvestigationAnalysisPermission_Description(),
+            Jenkins.ADMINISTER,
+            PermissionScope.RUN);
 
     private ChangeInvestigatorPermissions() {}
 }

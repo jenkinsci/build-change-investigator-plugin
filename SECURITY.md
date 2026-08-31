@@ -2,10 +2,20 @@
 
 ## Reporting a vulnerability
 
-If you find a security issue in this plugin, please report it privately rather than opening
-a public issue. Open a [GitHub Security Advisory](https://github.com/InfraGuard-Labs/build-change-investigator/security/advisories/new)
-on this repository, or email the maintainer listed in the plugin's `pom.xml`. Please do not
-disclose the issue publicly until a fix has been released.
+This plugin follows the [Jenkins project's security vulnerability reporting process](https://www.jenkins.io/security/reporting/).
+Please do not report security issues in the public issue tracker or a public GitHub issue on
+this repository.
+
+Please [report security vulnerabilities in the Jenkins issue tracker under the SECURITY project](https://issues.jenkins.io/secure/CreateIssueDetails!init.jspa?pid=10180&issuetype=10103).
+This project is configured so that only the reporter and the Jenkins security team can see the
+details, which lets us work on a fix and deliver it before the method of attack becomes
+well-known. If you are unable to use the issue tracker, you can instead email the private
+Jenkins security team mailing list: `jenkinsci-cert@googlegroups.com`.
+
+The Jenkins security team will then work with the maintainers of this plugin to get the issue
+resolved, and will coordinate disclosure timing. See
+[Reporting Security Vulnerabilities on jenkins.io](https://www.jenkins.io/security/reporting/)
+for further details on scope, issue handling, and the disclosure process.
 
 ## What data this plugin handles
 

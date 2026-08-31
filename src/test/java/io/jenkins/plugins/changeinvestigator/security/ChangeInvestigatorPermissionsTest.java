@@ -1,13 +1,17 @@
 package io.jenkins.plugins.changeinvestigator.security;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import hudson.model.FreeStyleProject;
 import hudson.model.Item;
+import hudson.model.Run;
 import hudson.model.User;
 import hudson.security.ACL;
 import hudson.security.ACLContext;
+import hudson.security.PermissionScope;
 import jenkins.model.Jenkins;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.JenkinsRule;
@@ -77,5 +81,31 @@ class ChangeInvestigatorPermissionsTest {
                     project.hasPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS),
                     "Jenkins.ADMINISTER should imply the plugin's RUN_AI_ANALYSIS permission");
         }
+    }
+
+    @Test
+    void permissionIsScopedToRunNotItem() {
+        // The permission only ever governs an action taken against one specific build, never
+        // the job/item as a whole - Run.PERMISSIONS/PermissionScope.RUN matches how Jenkins
+        // core itself scopes equivalent per-build permissions (Run.DELETE, Run.UPDATE).
+        assertEquals(Run.PERMISSIONS, ChangeInvestigatorPermissions.RUN_AI_ANALYSIS.group);
+        // isContainedBy(RUN) is only true if RUN itself is one of the permission's declared
+        // scopes (containment flows child -> parent, e.g. RUN -> ITEM, never the reverse) - an
+        // ITEM-scoped permission would fail this assertion.
+        assertTrue(
+                ChangeInvestigatorPermissions.RUN_AI_ANALYSIS.isContainedBy(PermissionScope.RUN),
+                "expected the permission to declare PermissionScope.RUN");
+        assertTrue(
+                ChangeInvestigatorPermissions.RUN_AI_ANALYSIS.isContainedBy(PermissionScope.ITEM),
+                "RUN scope must still be contained by ITEM so the permission remains configurable "
+                        + "in per-project/per-folder Matrix Authorization Strategy tables");
+    }
+
+    @Test
+    void permissionHasAHumanReadableDescription() {
+        assertNotNull(
+                ChangeInvestigatorPermissions.RUN_AI_ANALYSIS.description,
+                "the permission must have a description so Matrix Authorization Strategy and other "
+                        + "permission UIs can explain what it allows");
     }
 }

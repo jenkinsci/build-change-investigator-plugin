@@ -47,9 +47,6 @@
     <ban-commons-lang-2.skip>false</ban-commons-lang-2.skip>
     <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
     <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
-
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <spotbugs.skip>false</spotbugs.skip>
   </properties>
 
   <dependencyManagement>

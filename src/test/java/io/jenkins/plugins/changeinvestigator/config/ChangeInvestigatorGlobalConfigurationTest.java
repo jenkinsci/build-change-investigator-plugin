@@ -26,6 +26,34 @@ import org.springframework.security.access.AccessDeniedException;
 class ChangeInvestigatorGlobalConfigurationTest {
 
     @Test
+    void configureFormSubmissionPersistsOptionalBlockFieldsInOneBulkSave(JenkinsRule jenkins) throws Exception {
+        // Exercises the real Jelly form (f:optionalBlock + BulkChange-backed configure()), not
+        // just direct setter calls: proves inline="true" keeps the wrapped fields flat in the
+        // submitted JSON (rather than nested under "aiEnabled"), and that the whole submission
+        // still persists correctly through the single BulkChange-deferred save().
+        JenkinsRule.WebClient wc = jenkins.createWebClient();
+        org.htmlunit.html.HtmlPage page = wc.goTo("configure");
+        org.htmlunit.html.HtmlForm form = page.getFormByName("config");
+
+        org.htmlunit.html.HtmlCheckBoxInput aiEnabled = form.getInputByName("aiEnabled");
+        aiEnabled.setChecked(true);
+        form.getInputByName("_.baseUrl").setValue("https://example.test/v1");
+        form.getInputByName("_.model").setValue("gpt-test-model");
+        form.getInputByName("_.maxLogContextChars").setValue("1234");
+        form.getInputByName("_.timeoutSeconds").setValue("45");
+        form.getInputByName("_.temperature").setValue("0.55");
+        jenkins.submit(form);
+
+        ChangeInvestigatorGlobalConfiguration reloaded = new ChangeInvestigatorGlobalConfiguration();
+        assertTrue(reloaded.isAiEnabled());
+        assertEquals("https://example.test/v1", reloaded.getBaseUrl());
+        assertEquals("gpt-test-model", reloaded.getModel());
+        assertEquals(1234, reloaded.getMaxLogContextChars());
+        assertEquals(45, reloaded.getTimeoutSeconds());
+        assertEquals(0.55, reloaded.getTemperature(), 0.0001);
+    }
+
+    @Test
     void settingsSurviveAFreshLoadFromDisk(JenkinsRule jenkins) {
         ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();
         config.setAiEnabled(true);

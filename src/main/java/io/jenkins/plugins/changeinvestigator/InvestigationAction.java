@@ -53,7 +53,7 @@ public class InvestigationAction implements RunAction2 {
 
     @Override
     public String getIconFileName() {
-        return "/plugin/build-change-investigator/icons/investigator.svg";
+        return "symbol-investigator plugin-build-change-investigator";
     }
 
     @Override
