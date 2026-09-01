@@ -35,7 +35,7 @@ class OpenAiCompatibleClientProxyTest {
         try (MockAiServer mock = MockAiServer.start(
                 "{\"choices\":[{\"message\":{\"content\":\"{\\\"mostLikelyCause\\\":\\\"x\\\"}\"}}]}")) {
             AiProviderConfig config = new AiProviderConfig(mock.baseUrl(), "m", 5, 0.2, 1000);
-            String content = new OpenAiCompatibleClient(config, "token", objectMapper).chatCompletion("s", "u");
+            String content = new OpenAiCompatibleClient(config, objectMapper).chatCompletion("s", "u", "token");
             assertEquals("{\"mostLikelyCause\":\"x\"}", content);
         }
     }
@@ -51,7 +51,7 @@ class OpenAiCompatibleClientProxyTest {
                 AiProviderConfig config = new AiProviderConfig(mock.baseUrl(), "m", 3, 0.2, 1000);
                 AiAnalysisException ex = assertThrows(
                         AiAnalysisException.class,
-                        () -> new OpenAiCompatibleClient(config, "token", objectMapper).chatCompletion("s", "u"));
+                        () -> new OpenAiCompatibleClient(config, objectMapper).chatCompletion("s", "u", "token"));
                 assertTrue(
                         ex.getKind() == AiAnalysisException.Kind.CONNECTION_FAILED
                                 || ex.getKind() == AiAnalysisException.Kind.TIMEOUT,

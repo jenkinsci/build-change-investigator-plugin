@@ -148,6 +148,58 @@ class ChangeInvestigatorGlobalConfigurationTest {
     }
 
     @Test
+    void doCheckBaseUrlMakesNoNetworkCallForAdministrator(JenkinsRule jenkins) throws Exception {
+        jenkins.jenkins.setSecurityRealm(jenkins.createDummySecurityRealm());
+        jenkins.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy()
+                .grant(Jenkins.ADMINISTER)
+                .everywhere()
+                .to("adminUser"));
+
+        ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();
+
+        try (ACLContext ctx = ACL.as2(User.getById("adminUser", true).impersonate2())) {
+            // ".invalid" is reserved by RFC 2606 to never resolve. If doCheckBaseUrl ever
+            // attempted to connect to the value being validated, this would hang or fail slowly
+            // instead of returning immediately from pure string checks.
+            long startNanos = System.nanoTime();
+            FormValidation result = config.doCheckBaseUrl("https://this-host-should-never-be-contacted.invalid");
+            long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000;
+
+            assertEquals(FormValidation.Kind.OK, result.kind);
+            assertTrue(
+                    elapsedMillis < 2000,
+                    "doCheckBaseUrl must not attempt a network call; took " + elapsedMillis + "ms");
+        }
+    }
+
+    @Test
+    void doCheckBaseUrlCsrfSuppressionIsNarrowlyScoped() throws java.io.IOException {
+        // @SuppressWarnings has SOURCE retention (discarded by javac), which is exactly what
+        // the Jenkins CodeQL security scan needs since it analyzes source, not bytecode - but
+        // it also means this can't be verified via reflection at runtime like a normal
+        // annotation. Scan the source text itself instead.
+        String source = java.nio.file.Files.readString(
+                java.nio.file.Path.of(
+                        "src/main/java/io/jenkins/plugins/changeinvestigator/config/ChangeInvestigatorGlobalConfiguration.java"));
+
+        java.util.regex.Matcher matches = java.util.regex.Pattern.compile(
+                        "@SuppressWarnings\\(\"lgtm\\[jenkins/csrf]\"\\)\\s*\\n\\s*public FormValidation doCheckBaseUrl")
+                .matcher(source);
+        assertTrue(
+                matches.find(),
+                "doCheckBaseUrl must be immediately preceded by @SuppressWarnings(\"lgtm[jenkins/csrf]\")");
+
+        long suppressWarningsOccurrences = java.util.regex.Pattern.compile("@SuppressWarnings")
+                .matcher(source)
+                .results()
+                .count();
+        assertEquals(
+                1,
+                suppressWarningsOccurrences,
+                "exactly one @SuppressWarnings should exist in this file - on doCheckBaseUrl only");
+    }
+
+    @Test
     void doFillCredentialsIdItemsDeniesUsersWithoutAdminister(JenkinsRule jenkins) throws Exception {
         jenkins.jenkins.setSecurityRealm(jenkins.createDummySecurityRealm());
         jenkins.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy()

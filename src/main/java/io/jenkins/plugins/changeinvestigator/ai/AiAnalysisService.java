@@ -26,12 +26,12 @@ public final class AiAnalysisService {
      */
     public AiAssessment analyze(BuildInvestigationEvidence evidence, AiProviderConfig config, String apiToken) {
         PromptBuilder promptBuilder = new PromptBuilder(objectMapper);
-        OpenAiCompatibleClient client = new OpenAiCompatibleClient(config, apiToken, objectMapper);
+        OpenAiCompatibleClient client = new OpenAiCompatibleClient(config, objectMapper);
         AiResponseParser parser = new AiResponseParser(objectMapper, config.model());
 
         try {
             String rawContent =
-                    client.chatCompletion(promptBuilder.systemPrompt(), promptBuilder.userContent(evidence));
+                    client.chatCompletion(promptBuilder.systemPrompt(), promptBuilder.userContent(evidence), apiToken);
             return parser.parse(rawContent);
         } catch (AiAnalysisException e) {
             // FINER, not INFO: the same information is already shown to the user via the

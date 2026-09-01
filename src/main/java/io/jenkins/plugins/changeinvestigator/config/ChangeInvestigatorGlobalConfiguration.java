@@ -231,8 +231,11 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
                 0.0,
                 200);
         try {
-            new OpenAiCompatibleClient(testConfig, credentials.getSecret().getPlainText(), new ObjectMapper())
-                    .chatCompletion("Respond with exactly: {\"ok\":true}", "Respond with exactly: {\"ok\":true}");
+            new OpenAiCompatibleClient(testConfig, new ObjectMapper())
+                    .chatCompletion(
+                            "Respond with exactly: {\"ok\":true}",
+                            "Respond with exactly: {\"ok\":true}",
+                            credentials.getSecret().getPlainText());
             return FormValidation.ok("Connection succeeded.");
         } catch (AiAnalysisException e) {
             LOGGER.log(Level.FINE, "Test connection failed", e);
@@ -249,6 +252,15 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
      * ("starts with http:// or https://") is not one of the built-in clazz keywords.
      */
 
+    // Read-only form validation: makes no network request, mutates no state, does no
+    // expensive work, and is already gated by the hasPermission(ADMINISTER) check below
+    // (falling back to a harmless ok() for non-admins rather than throwing). Per
+    // jenkins-infra/jenkins-codeql's own WebMethodMissingPostAnnotation false-positive
+    // criteria (no side effects), this is intentionally left as GET-style validation rather
+    // than @POST/@RequirePOST - see
+    // https://www.jenkins.io/doc/developer/security/form-validation/. The suppression below
+    // is scoped to exactly this method and exactly the jenkins/csrf query.
+    @SuppressWarnings("lgtm[jenkins/csrf]")
     public FormValidation doCheckBaseUrl(@QueryParameter String value) {
         if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
             return FormValidation.ok();

@@ -22,26 +22,24 @@ import java.time.Duration;
 public final class OpenAiCompatibleClient {
 
     private final AiProviderConfig config;
-
-    // Deliberately a plain field on a non-record class, not a field on AiProviderConfig: this
-    // class never auto-generates toString()/equals()/hashCode(), so holding the token here
-    // cannot leak it through a generated method the way it could on a record. Only ever read
-    // once, to build the Authorization header below.
-    private final String apiToken;
-
     private final ObjectMapper objectMapper;
 
-    public OpenAiCompatibleClient(AiProviderConfig config, String apiToken, ObjectMapper objectMapper) {
+    public OpenAiCompatibleClient(AiProviderConfig config, ObjectMapper objectMapper) {
         this.config = config;
-        this.apiToken = apiToken;
         this.objectMapper = objectMapper;
     }
 
     /**
      * Sends the system/user messages and returns the raw assistant message content string
      * (not yet parsed as the evidence-assessment JSON - see {@link AiResponseParser}).
+     *
+     * @param apiToken resolved credential plaintext. Deliberately a method parameter rather
+     *     than a field on this class (or on {@link AiProviderConfig}): it exists only for the
+     *     duration of this call, long enough to build the outbound {@code Authorization}
+     *     header below, and is never retained as object state that could later be exposed via
+     *     logging, a debugger, or a future {@code toString()}/{@code equals()} method.
      */
-    public String chatCompletion(String systemPrompt, String userContent) throws AiAnalysisException {
+    public String chatCompletion(String systemPrompt, String userContent, String apiToken) throws AiAnalysisException {
         if (apiToken == null || apiToken.isBlank()) {
             throw new AiAnalysisException(
                     AiAnalysisException.Kind.CREDENTIALS_MISSING, "No API token is configured for AI analysis.");
