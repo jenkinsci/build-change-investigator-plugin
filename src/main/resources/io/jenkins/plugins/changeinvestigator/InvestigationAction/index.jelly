@@ -35,7 +35,7 @@
               </l:card>
             </j:otherwise>
           </j:choose>
-          <l:card title="Agent / node">
+          <l:card title="Agent">
             <div>
               <j:choose>
                 <j:when test="${it.evidence.nodeInfoAvailable}">${it.evidence.nodeName}</j:when>
@@ -47,7 +47,7 @@
       </div>
 
       <j:if test="${!empty(it.evidence.warnings)}">
-        <div class="jenkins-!-margin-bottom-3">
+        <div class="jenkins-!-margin-bottom-3 bci-evidence-notes">
           <l:notice title="Evidence notes" icon="symbol-warning-outline">
             <ul>
               <j:forEach var="w" items="${it.evidence.warnings}">
@@ -99,7 +99,7 @@
         <h2>Failure log excerpt</h2>
         <j:choose>
           <j:when test="${it.evidence.logAvailable}">
-            <pre class="bci-log-excerpt">${it.evidence.logExcerptText}</pre>
+            <pre>${it.evidence.logExcerptText}</pre>
             <j:if test="${it.evidence.logExcerptTruncated}">
               <p class="jenkins-!-color-secondary">Excerpt truncated to the configured maximum size.</p>
             </j:if>
@@ -146,10 +146,10 @@
             </l:notice>
           </j:when>
           <j:when test="${it.hasAiAssessment() and it.aiAssessment.disabled}">
-            <l:notice title="AI analysis is disabled by the Jenkins administrator" icon="symbol-information-circle-outline"/>
+            <l:notice title="AI analysis is disabled by the Jenkins administrator" icon="symbol-information-circle-outline plugin-ionicons-api"/>
           </j:when>
           <j:otherwise>
-            <l:notice title="AI analysis has not been run yet for this build" icon="symbol-information-circle-outline"/>
+            <l:notice title="AI analysis has not been run yet for this build" icon="symbol-information-circle-outline plugin-ionicons-api"/>
           </j:otherwise>
         </j:choose>
 

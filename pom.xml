@@ -62,6 +62,12 @@
   </dependencyManagement>
 
   <dependencies>
+
+    <!-- Provides the "symbol-X plugin-ionicons-api" icon set used on the investigation page -->
+    <dependency>
+      <groupId>io.jenkins.plugins</groupId>
+      <artifactId>ionicons-api</artifactId>
+    </dependency>
     <!-- Credentials handling for the AI provider API token -->
     <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>

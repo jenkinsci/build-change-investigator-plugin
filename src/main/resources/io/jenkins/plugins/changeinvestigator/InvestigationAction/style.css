@@ -21,17 +21,21 @@
   flex: 1 1 240px;
 }
 
-.bci-log-excerpt {
-  margin: 0;
-  padding: 10px 14px;
-  border: 1px solid var(--text-color-secondary);
-  border-radius: var(--form-input-border-radius, 4px);
-  color: var(--text-color);
-  overflow: auto;
-  max-height: 420px;
-  font-size: 0.85em;
-  white-space: pre-wrap;
-  word-break: break-word;
+/* Evidence notes wraps a growing bulleted list, not a short empty-state message like the
+   AI-disabled/AI-not-run notices elsewhere on this page - override l:notice's default
+   centered, min-height empty-state layout (see the Design Library "Empty States" page) so it
+   reads left-to-right on wide screens instead of floating in the middle of an oversized box.
+   Scoped to this one notice only; the other l:notice usages on this page keep the component's
+   default centered treatment, which suits their short single-line messages. */
+.bci-evidence-notes .jenkins-notice {
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  min-height: 0;
+}
+
+.bci-evidence-notes .jenkins-notice__description {
+  text-align: left;
 }
 
 .bci-confidence-high {
