@@ -19,7 +19,7 @@ import org.kohsuke.stapler.verb.POST;
  *
  * <p>Deterministic {@link #evidence} is collected once, at build completion, and never
  * requires an AI call. {@link #aiAssessment} starts {@code null} ("not yet run") and is only
- * populated when a permitted user explicitly triggers {@link #doRunAi()}, so simply viewing
+ * populated when a permitted user explicitly triggers {@link #doRunAi(StaplerResponse2)}, so simply viewing
  * a build page never causes an outbound AI request. The result is cached on the action (and
  * persisted with the build) so revisiting the page does not re-trigger analysis.
  */
