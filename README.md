@@ -6,22 +6,22 @@ most likely responsible for the regression?"**
 A Jenkins plugin focused on regression/change correlation for failed builds - not generic
 AI-powered error explanation.
 
-> **Repository location:** an [official Jenkins hosting request](https://github.com/jenkins-infra/repository-permissions-updater/issues/5249)
-> is open for this plugin. `pom.xml`'s `<url>`/`<scm>` already use the canonical
-> `jenkinsci/build-change-investigator-plugin` coordinates required for hosting; until the
-> request is approved, the source itself still lives at
-> `https://github.com/InfraGuard-Labs/build-change-investigator` - see
-> [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md#6-future-jenkins-plugin-site-update-center-publication-requirements).
+Build Change Investigator is an official Jenkins plugin, hosted under the
+[`jenkinsci`](https://github.com/jenkinsci/build-change-investigator-plugin) GitHub
+organization and published on the
+[Jenkins plugin site](https://plugins.jenkins.io/build-change-investigator/).
 
 ## Table of contents
 
+- [Installation](#installation)
+- [Requirements](#requirements)
+- [How it works](#how-it-works)
+  - [Quick example](#quick-example)
+- [What the investigation shows](#what-the-investigation-shows)
+- [Optional AI-assisted analysis](#optional-ai-assisted-analysis)
+- [Configuration](#configuration)
 - [Problem statement](#problem-statement)
 - [How this differs from generic AI error-explanation plugins](#how-this-differs-from-generic-ai-error-explanation-plugins)
-- [Screenshots](#screenshots)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
 - [Architecture overview](#architecture-overview)
 - [Privacy and security](#privacy-and-security)
 - [Example investigation](#example-investigation)
@@ -30,6 +30,190 @@ AI-powered error explanation.
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Installation
+
+### Install from Jenkins Plugin Manager
+
+Build Change Investigator is available through the Jenkins Plugin Manager.
+
+1. Open Jenkins.
+2. Go to **Manage Jenkins → Plugins**.
+3. Select **Available plugins**.
+4. Search for **Build Change Investigator**.
+5. Select the plugin and click **Install**.
+6. Restart Jenkins if Jenkins requests or recommends it (a restart is not always required, but
+   Jenkins will tell you if this plugin needs one).
+
+Official plugin page: <https://plugins.jenkins.io/build-change-investigator/>
+
+### Manual installation (advanced / offline instances)
+
+If you need to install the `.hpi` file directly instead - for example, on an instance without
+internet access to the Update Center:
+
+1. Download the `.hpi` from the [plugin page](https://plugins.jenkins.io/build-change-investigator/),
+   or build it yourself (see [Contributing](#contributing)) to produce
+   `target/build-change-investigator.hpi`.
+2. In Jenkins, go to **Manage Jenkins → Plugins → Advanced settings → Deploy Plugin** and upload
+   the `.hpi` file (or copy it into `$JENKINS_HOME/plugins/` and restart Jenkins).
+3. Restart Jenkins if prompted.
+
+Normal users installing on a Jenkins instance with internet access should use the Plugin Manager
+method above.
+
+## Requirements
+
+- Jenkins `2.568.2` or newer (see `jenkins.version` in `pom.xml`).
+- Java 21 on the Jenkins controller - this is the minimum Java version current Jenkins weekly
+  releases in this baseline require, not an additional requirement specific to this plugin.
+- The [Credentials](https://plugins.jenkins.io/credentials/),
+  [Plain Credentials](https://plugins.jenkins.io/plain-credentials/), and
+  [Ionicons API](https://plugins.jenkins.io/ionicons-api/) plugins (installed automatically as
+  dependencies - no manual action needed).
+- Optional: an OpenAI-compatible API endpoint (OpenAI itself, Azure OpenAI, a self-hosted
+  gateway like LiteLLM/vLLM/Ollama with an OpenAI-compatible `/chat/completions` route, etc.)
+  if you want the AI assessment feature. Everything else works without it.
+
+## How it works
+
+**No Jenkinsfile changes are required.** Build Change Investigator integrates with Jenkins'
+build lifecycle directly (a `RunListener`) rather than requiring a pipeline step or any job
+configuration - it works automatically for both Freestyle and Pipeline jobs.
+
+An investigation is recorded automatically whenever a build finishes with a result **worse than
+`SUCCESS`** - that is, `FAILURE`, `UNSTABLE`, or `ABORTED` (a build that never actually ran,
+`NOT_BUILT`, is skipped, since there is nothing to investigate). Builds that finish successfully
+never get an investigation and are never contacted by any AI provider.
+
+For example:
+
+```
+Build #41 — SUCCESS
+Build #42 — FAILURE
+```
+
+When build #42 fails, Build Change Investigator records an investigation for that build. Open
+build #42's page, and a **Build Change Investigation** link appears automatically in the left
+sidebar (no configuration needed). Selecting it opens the investigation page, which shows the
+deterministic evidence collected for the regression - starting with a comparison against the
+last build that succeeded (build #41 here).
+
+![Failed build page with the Build Change Investigation link in the sidebar](demo/screenshots/build-action.gif)
+
+*Build Change Investigation appears directly on the affected build.*
+
+If a job has no previous successful build (its first build ever fails, or every prior build also
+failed), the investigation still opens and says so explicitly rather than guessing or comparing
+against nothing.
+
+### Quick example
+
+1. Run a Jenkins job successfully.
+2. Make a change that causes the next build to fail.
+3. Run the job again.
+4. Open the failed build.
+5. Select **Build Change Investigation** in the sidebar.
+6. Review the changes between the last successful build and the failed build.
+
+Meaningful change correlation depends on Jenkins actually having SCM/change information for the
+job (see [What the investigation shows](#what-the-investigation-shows) below) - a job with no
+SCM configured will still show failure-log evidence, just no commit/change evidence.
+
+## What the investigation shows
+
+The investigation page shows two clearly separated kinds of information:
+
+![Investigation page showing build comparison, changes since last success, and failure log excerpt](demo/screenshots/investigation-overview.gif)
+
+*The investigation compares the current build with the last successful build and presents observed change and failure evidence.*
+
+**Deterministic observed evidence** - collected the moment the build finishes, with no AI
+involvement and no network call to any AI provider:
+
+- The failed (or unstable/aborted) build vs. the last successful build, with a link to each.
+- Agent/node name, where available (see [Limitations](#limitations) for when it isn't).
+- SCM changes since the last successful build: commits/revisions, authors, messages, and
+  changed files, accumulated across every intervening build, not just the most recent one.
+- A bounded, secret-redacted excerpt of the failure log, focused around
+  error/failure/exception markers.
+- Explicit notes for anything Jenkins could not provide (e.g. no prior successful build, no SCM
+  changes reported, agent info unavailable for a Pipeline build) - evidence gaps are always
+  stated, never silently omitted or guessed.
+
+**Optional AI-assisted analysis** - see [below](#optional-ai-assisted-analysis).
+
+This deterministic evidence is available on every investigation, regardless of whether AI
+analysis is configured at all.
+
+## Optional AI-assisted analysis
+
+**AI-assisted analysis is optional.** Build Change Investigator's core value - deterministic
+build/change correlation - works fully without any AI provider configured. AI is not required
+for the plugin to function, and it is not the plugin's primary purpose.
+
+![Investigation page showing the deterministic evidence with AI analysis not yet run](demo/screenshots/investigation-no-ai.gif)
+
+*The deterministic investigation is available without configuring an AI provider.*
+
+- Observed build evidence is collected independently of AI, for every applicable build, whether
+  or not AI analysis is enabled.
+- Simply opening the investigation page never triggers an AI request.
+- AI analysis is off by default and must be explicitly enabled by an administrator
+  (see [Configuration](#configuration)).
+- Even when enabled, a specific AI request only happens when an authorized user clicks
+  **Run AI Analysis** on a given investigation - never automatically.
+- When run, AI analysis operates only on the evidence already collected above (job/build
+  metadata, SCM changes, the redacted log excerpt) - never the full console log, credentials, or
+  workspace file contents.
+- The result - most likely regression-causing change, reasoning citing specific evidence, an
+  explicit confidence level (`LOW`/`MEDIUM`/`HIGH`), and recommended verification steps - is
+  shown in a section clearly separate from the observed evidence, and is cached on the build so
+  revisiting the page later doesn't trigger another request. Click **Re-run AI Analysis** to
+  explicitly request a new one.
+
+![Investigation page showing a completed AI assessment](demo/screenshots/investigation-ai-analysis.gif)
+
+*Optional AI-assisted analysis shown using the project's local demo provider. The deterministic
+investigation works independently of AI.*
+
+## Configuration
+
+Go to **Manage Jenkins → System → Build Change Investigator**:
+
+| Field | Description |
+|---|---|
+| Enable AI analysis of investigations | Off by default. Deterministic evidence works regardless of this setting; the fields below only appear once this is checked. |
+| Base URL | OpenAI-compatible base URL, e.g. `https://api.openai.com/v1`. `/chat/completions` is appended automatically. |
+| Model | Model name to request, e.g. `gpt-4o-mini`. |
+| API Token Credential | A Jenkins **Secret text** credential holding the provider's API token. Never logged or displayed. |
+| Max Log Context Characters | Upper bound on how much (already-reduced, already-redacted) log text is sent to the AI provider. |
+| Connection Timeout (seconds) | Seconds to wait for the AI provider before giving up. |
+| Temperature | Sampling temperature; kept low by default. |
+| Test Connection | Sends a minimal request to verify the configuration works before relying on it. |
+
+All secrets (the AI provider's API token) are handled exclusively through the Jenkins
+Credentials plugin - there is no field anywhere in this plugin for pasting a raw secret, and
+v1 does not support custom HTTP headers of any kind (including header-based auth schemes) for
+the AI request. If your provider requires an authentication method other than an
+`Authorization: Bearer` header, it is not supported in this version.
+
+Only Jenkins administrators (`Jenkins.ADMINISTER`) can view or change these settings, and the
+API token value is never exposed back to the browser.
+
+### Permissions
+
+This plugin adds one permission: **`RunChangeInvestigationAnalysis`**, scoped to individual
+builds (the same permission group Jenkins core uses for its own per-build permissions like
+Run/Delete and Run/Update) rather than to the job as a whole. It must be **granted explicitly**
+- it is deliberately *not* implied by `Item.BUILD` or any other job-trigger permission, since
+being trusted to run builds does not, by itself, authorize spending AI provider budget on a
+user's behalf. It is implied only by `Jenkins.ADMINISTER`: instance administrators have
+effective access to it automatically, the same way they have effective access to everything
+else, without needing a redundant separate grant. Viewing an investigation (the observed
+evidence and any cached AI result) requires only the standard `Item.READ` permission already
+used to view the build itself - no separate permission is needed to look at what's already
+there.
 
 ## Problem statement
 
@@ -44,7 +228,7 @@ collects everything Jenkins knows about what changed since then, pulls out the p
 failure log that look relevant, and (optionally) asks an AI model to point at the most likely
 culprit - citing the specific evidence it used, with an explicit confidence level.
 
-## What makes Build Change Investigator different
+## How this differs from generic AI error-explanation plugins
 
 Build Change Investigator focuses specifically on **regression correlation**.
 
@@ -64,111 +248,6 @@ The plugin combines:
 - optional AI-assisted analysis with cited supporting evidence and an explicit confidence level
 
 The deterministic evidence remains useful even when AI analysis is disabled.
-
-## Screenshots
-
-## Investigation overview
-
-Build Change Investigator compares the failed build with the last successful build, shows the changes between them, and extracts relevant failure-log evidence.
-
-![Build Change Investigator overview](demo/screenshots/investigation-overview.png)
-
-### AI-assisted regression analysis
-
-When AI analysis is enabled, the plugin uses the observed Jenkins evidence to identify the most likely regression-causing change, explain why, cite supporting evidence, and recommend verification steps.
-
-![AI-assisted regression analysis](demo/screenshots/investigation-ai-mock.png)
-
-### Installed in Jenkins
-
-Build Change Investigator runs as a native Jenkins plugin and adds a **Build Change Investigation** action to failed builds.
-
-![Build Change Investigator installed in Jenkins](demo/screenshots/plugin-installed.png)
-
-## Requirements
-
-- Jenkins `2.568.2` or newer (see `jenkins.version` in `pom.xml`).
-- Java 21 runtime on the Jenkins controller (matches current Jenkins core requirements).
-- The [Credentials](https://plugins.jenkins.io/credentials/) and
-  [Plain Credentials](https://plugins.jenkins.io/plain-credentials/) plugins (installed
-  automatically as dependencies).
-- Optional: an OpenAI-compatible API endpoint (OpenAI itself, Azure OpenAI, a self-hosted
-  gateway like LiteLLM/vLLM/Ollama with an OpenAI-compatible `/chat/completions` route, etc.)
-  if you want the AI assessment feature. Everything else works without it.
-
-## Installation
-
-1. Build the plugin (see [CONTRIBUTING.md](CONTRIBUTING.md)) to produce
-   `target/build-change-investigator.hpi`, or download the `.hpi` from a
-   [GitHub Release](https://github.com/InfraGuard-Labs/build-change-investigator/releases) once
-   published.
-2. In Jenkins, go to **Manage Jenkins → Plugins → Advanced settings → Deploy Plugin** and
-   upload the `.hpi` file (or copy it into `$JENKINS_HOME/plugins/` and restart Jenkins).
-3. Restart Jenkins if prompted.
-
-See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for exact step-by-step instructions.
-
-## Configuration
-
-Go to **Manage Jenkins → System → Build Change Investigator**:
-
-| Field | Description |
-|---|---|
-| Enable AI analysis | Off by default. Deterministic evidence works regardless of this setting. |
-| Base URL | OpenAI-compatible base URL, e.g. `https://api.openai.com/v1`. `/chat/completions` is appended automatically. |
-| Model | Model name to request, e.g. `gpt-4o-mini`. |
-| API Token Credential | A Jenkins **Secret text** credential holding the provider's API token. Never logged or displayed. |
-| Max Log Context Characters | Upper bound on how much (already-reduced, already-redacted) log text is sent to the AI provider. |
-| Connection Timeout | Seconds to wait for the AI provider before giving up. |
-| Temperature | Sampling temperature; kept low by default. |
-| Test Connection | Sends a minimal request to verify the configuration works before relying on it. |
-
-All secrets (the AI provider's API token) are handled exclusively through the Jenkins
-Credentials plugin - there is no field anywhere in this plugin for pasting a raw secret, and
-v1 does not support custom HTTP headers of any kind (including header-based auth schemes) for
-the AI request. If your provider requires an authentication method other than an
-`Authorization: Bearer` header, it is not supported in this version.
-
-Only Jenkins administrators (`Jenkins.ADMINISTER`) can view or change these settings, and the
-API token value is never exposed back to the browser.
-
-### Permissions
-
-This plugin adds one permission: **`RunChangeInvestigationAnalysis`** (shown in the job
-permission matrix under the standard "Item" permissions). It must be **granted explicitly** -
-it is deliberately *not* implied by `Item.BUILD` or any other job-trigger permission, since
-being trusted to run builds does not, by itself, authorize spending AI provider budget on a
-user's behalf. It is implied only by `Jenkins.ADMINISTER`: instance administrators have
-effective access to it automatically, the same way they have effective access to everything
-else, without needing a redundant separate grant. Viewing an investigation (the observed
-evidence and any cached AI result) requires only the standard `Item.READ` permission already
-used to view the build itself - no separate permission is needed to look at what's already
-there.
-
-## Usage
-
-1. A build fails, goes unstable, or is aborted.
-2. Open that build's page. A **"Build Change Investigation"** link appears in the sidebar
-   (added automatically - no pipeline/job configuration needed).
-3. The page shows, immediately and without any AI call:
-   - **BUILD COMPARISON**: the failed build vs. the last successful build.
-   - **CHANGES SINCE LAST SUCCESS**: commits/revisions, authors, messages, changed files -
-     accumulated across *every* build between the last success and this failure, not just the
-     most recent one.
-   - **FAILURE LOG EXCERPT**: a bounded, secret-redacted set of log lines around
-     error/failure/exception markers (or the log tail, if nothing matched).
-   - Any evidence Jenkins could not provide is listed explicitly as a note, never silently
-     omitted.
-4. If AI analysis is enabled and you have the `RunChangeInvestigationAnalysis` permission, a
-   **"Run AI Analysis"** button appears. Clicking it sends the evidence bundle above (and
-   nothing else) to the configured endpoint and displays, in a clearly separate
-   **AI ASSESSMENT** section:
-   - Most likely regression-causing change, with a **LOW / MEDIUM / HIGH** confidence badge.
-   - The reasoning, citing specific evidence items.
-   - Recommended verification steps.
-   - An explicit "insufficient evidence" flag if the model didn't have enough to go on.
-5. The result is cached on the build - revisiting the page later shows the same result without
-   another API call. Click **"Re-run AI Analysis"** to explicitly request a new one.
 
 ## Architecture overview
 
@@ -213,10 +292,13 @@ Key Jenkins extension points used:
 - `jenkins.model.GlobalConfiguration` - the administrator-facing settings page.
 - `hudson.security.Permission` - the custom `RunChangeInvestigationAnalysis` permission.
 - Jenkins **Credentials API** (`StringCredentials`) - for the AI provider's API token.
+- Outbound AI requests are made through `hudson.ProxyConfiguration.newHttpClientBuilder()`, so
+  they honor the Jenkins instance's own configured HTTP proxy.
 
 ## Privacy and security
 
-See [SECURITY.md](SECURITY.md) for the full policy. Summary:
+See [SECURITY.md](SECURITY.md) for the full policy and for how to report a vulnerability.
+Summary:
 
 - Deterministic evidence collection never makes a network call to any AI provider.
 - The full console log is **never** sent anywhere. A bounded, keyword-selected excerpt is used,
@@ -228,25 +310,26 @@ See [SECURITY.md](SECURITY.md) for the full policy. Summary:
 - AI analysis is off by default, requires `Jenkins.ADMINISTER` to configure, and requires a
   separate permission (`RunChangeInvestigationAnalysis`) to actually trigger per build.
 - The AI provider's API token is stored only via the Jenkins Credentials plugin and is never
-  logged, persisted in plain text elsewhere, or shown back in the UI.
+  logged, persisted in plain text elsewhere, or shown back in the UI. There is no configuration
+  field for pasting a raw API token directly into the plugin.
 
 ## Example investigation
 
 ```
-BUILD COMPARISON
-Failed Build:            #185 - FAILURE
-Last Successful Build:   #184 - SUCCESS
-Agent:                   linux-agent-3
+Build comparison
+Failed build:            #185 - FAILURE
+Last successful build:   #184 - SUCCESS
+Agent:                    linux-agent-3
 
-CHANGES SINCE LAST SUCCESS
+Changes since last success
 #185  a1b2c3d  alice   "Bump jackson-databind 2.15.0 -> 2.17.0"   [pom.xml]
 
-FAILURE LOG EXCERPT
+Failure log excerpt
 ERROR: com.fasterxml.jackson.databind.exc.InvalidDefinitionException:
   Cannot construct instance of `com.example.Widget`
 Caused by: NoSuchMethodError: 'void com.fasterxml.jackson.databind...'
 
-AI ASSESSMENT                                              [AI-GENERATED]
+AI assessment
 Confidence: HIGH
 Most likely regression: The jackson-databind version bump in commit a1b2c3d.
 Why: The only change since the last successful build touches pom.xml's
@@ -274,13 +357,16 @@ http://localhost:8080/jenkins/.
 To see the plugin do something meaningful without needing a real Git server, use the freestyle
 demo job described in [`demo/README.md`](demo/README.md): build #1 succeeds, then a source file
 changes and build #2 fails, and the build page shows the last successful build, the change, and
-the failure evidence exactly as described under [Usage](#usage).
+the failure evidence exactly as described under [How it works](#how-it-works).
 
 ## Limitations
 
 - **Agent/node name is only available for freestyle-style builds** (anything extending
   `AbstractBuild`). Pipeline builds can span multiple agents, so no single "the node" is
   reported for them - this is stated explicitly in the evidence rather than guessed.
+- **A previous successful build is not required, but there is nothing to compare against
+  without one.** If a job's first build fails, or no prior build ever succeeded, the
+  investigation still opens and states this explicitly instead of comparing against nothing.
 - **Change accumulation walks build history up to a safety cap** (200 builds). If far more
   builds separate a failure from the last success, evidence will note it was capped.
 - **Secret redaction is pattern-based and best-effort**, not exhaustive - see
@@ -288,6 +374,9 @@ the failure evidence exactly as described under [Usage](#usage).
 - **One AI provider shape per instance**: this plugin speaks the OpenAI "chat completions" HTTP
   shape. Providers with a fundamentally different API (not exposing an OpenAI-compatible
   `/chat/completions` route) are not supported without a compatibility proxy in front of them.
+- **AI analysis is probabilistic and advisory, not authoritative** - it is a clearly-marked
+  interpretation of the observed evidence, not a fact, and should be verified like any other
+  hypothesis.
 - **No pipeline-specific step or custom DSL** is provided in v1 - the build-page action works
   automatically for both freestyle and pipeline jobs, which covers the core use case without
   adding pipeline syntax to maintain.
