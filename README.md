@@ -19,6 +19,7 @@ organization and published on the
   - [Quick example](#quick-example)
 - [What the investigation shows](#what-the-investigation-shows)
 - [Optional AI-assisted analysis](#optional-ai-assisted-analysis)
+- [Supported AI providers](#supported-ai-providers)
 - [Configuration](#configuration)
 - [Problem statement](#problem-statement)
 - [How this differs from generic AI error-explanation plugins](#how-this-differs-from-generic-ai-error-explanation-plugins)
@@ -64,16 +65,17 @@ method above.
 
 ## Requirements
 
-- Jenkins `2.568.2` or newer (see `jenkins.version` in `pom.xml`).
-- Java 21 on the Jenkins controller - this is the minimum Java version current Jenkins weekly
-  releases in this baseline require, not an additional requirement specific to this plugin.
+- Jenkins `2.541.3` or newer (see `jenkins.version` in `pom.xml`).
+- Java 17, 21, or 25 on the Jenkins controller - this plugin targets Java 17 and has been
+  verified running on all three, matching the Java versions the `2.541.x` Jenkins LTS line
+  itself supports.
 - The [Credentials](https://plugins.jenkins.io/credentials/),
   [Plain Credentials](https://plugins.jenkins.io/plain-credentials/), and
   [Ionicons API](https://plugins.jenkins.io/ionicons-api/) plugins (installed automatically as
   dependencies - no manual action needed).
-- Optional: an OpenAI-compatible API endpoint (OpenAI itself, Azure OpenAI, a self-hosted
-  gateway like LiteLLM/vLLM/Ollama with an OpenAI-compatible `/chat/completions` route, etc.)
-  if you want the AI assessment feature. Everything else works without it.
+- Optional: an OpenAI-compatible chat-completions API endpoint if you want the AI assessment
+  feature - see [Supported AI providers](#supported-ai-providers) for exactly what that does
+  and does not include. Everything else works without it.
 
 ## How it works
 
@@ -176,6 +178,50 @@ for the plugin to function, and it is not the plugin's primary purpose.
 
 *Optional AI-assisted analysis shown using the project's local demo provider. The deterministic
 investigation works independently of AI.*
+
+## Supported AI providers
+
+Build Change Investigator works with **OpenAI-compatible chat-completions APIs**. It does not
+require OpenAI specifically - any endpoint that accepts a `POST {base URL}/chat/completions`
+request in the OpenAI request/response shape can be configured.
+
+**What the plugin actually sends and expects:** a JSON body containing `model` (exactly what
+you type into the Model field), `temperature`, and a two-message `messages` array (`system` +
+`user`) - no `max_tokens` or other fields. It reads the response as
+`choices[0].message.content`, matching OpenAI's own non-streaming chat-completions response
+shape. Authentication is always a single `Authorization: Bearer <token>` header, sourced from a
+Jenkins **Secret text** credential - there is no support for a custom header name, an
+`api-key`-style header, extra query parameters, or unauthenticated requests. A credential must
+always be selected, even when the target server itself does not check it.
+
+**Models are not hardcoded.** There is no allowlist - the `Model` field is sent to the endpoint
+exactly as typed, so any model identifier your configured endpoint accepts will be requested
+as-is.
+
+### Support matrix
+
+Statuses reflect whether the provider's documented API contract matches what this plugin sends,
+not a live integration test against that provider - the automated test suite exercises this
+contract against a local mock server, not against any of these services directly.
+
+| Provider / API style | Status | Notes |
+|---|---|---|
+| OpenAI | Confirmed compatible | The native shape this plugin implements; `Authorization: Bearer` matches OpenAI's own auth. |
+| OpenRouter | Likely compatible | Documented endpoint (`https://openrouter.ai/api/v1/chat/completions`) and `Authorization: Bearer` auth match this plugin's request shape exactly. |
+| LiteLLM proxy | Likely compatible | Documented to expose `/v1/chat/completions` with `Authorization: Bearer <virtual key>` - matches. |
+| vLLM (OpenAI-compatible server) | Likely compatible | Documented `/v1/chat/completions` endpoint; Bearer auth is optional server-side, and any token value satisfies this plugin's "a credential must be set" requirement. |
+| Ollama (OpenAI-compatible API) | Likely compatible | `http://<host>:11434/v1/chat/completions` matches; Ollama does not check the API key, so a placeholder Jenkins credential value works. |
+| LM Studio | Likely compatible | Exposes a local OpenAI-compatible `/v1/chat/completions`-shaped endpoint that tolerates a Bearer header per its own documentation. |
+| Azure OpenAI | **Not supported as implemented** | Azure's chat-completions endpoint requires the path `/openai/deployments/{deployment}/chat/completions` plus a mandatory `?api-version=` query parameter, and its primary auth is an `api-key` header (`Authorization: Bearer` is only valid for short-lived Microsoft Entra ID tokens, which this plugin has no mechanism to refresh). This plugin always calls a fixed `{base URL}/chat/completions` with a static `Authorization: Bearer` header and no query-string support, so it cannot express Azure's required request shape. |
+| Any other OpenAI-compatible gateway not listed above | Unverified | Compatibility depends entirely on whether it accepts a plain `{base URL}/chat/completions` POST with `Authorization: Bearer` and returns `choices[0].message.content`. |
+
+### Models
+
+Model names are not hardcoded; use the model identifier expected by your configured endpoint
+(for example `gpt-4o-mini` for OpenAI, or a local model name for Ollama/vLLM/LM Studio). A
+non-OpenAI model such as a Claude or Llama model is only reachable through an OpenAI-compatible
+gateway/proxy that translates the request into that model's own API - this plugin never talks
+to Anthropic's or any other vendor's native API directly.
 
 ## Configuration
 
