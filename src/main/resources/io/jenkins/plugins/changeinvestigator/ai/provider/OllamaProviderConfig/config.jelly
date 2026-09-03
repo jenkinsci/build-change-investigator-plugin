@@ -1,0 +1,17 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+  <f:entry title="Base URL" field="baseUrl"
+           description="e.g. http://host.docker.internal:11434/v1 for Docker Desktop, or http://&lt;ollama-host&gt;:11434/v1 for a remote/LAN instance. &quot;localhost&quot; refers to the Jenkins controller/agent itself, which is usually not where Ollama runs.">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Model" field="model" description="Model name as pulled in Ollama, e.g. llama3.1.">
+    <f:textbox/>
+  </f:entry>
+
+  <f:block>
+    <div class="jenkins-!-color-secondary">
+      No credential is needed - Ollama's OpenAI-compatible endpoint does not check authentication.
+    </div>
+  </f:block>
+</j:jelly>

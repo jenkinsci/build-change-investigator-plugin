@@ -1,0 +1,23 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:c="/lib/credentials">
+  <f:entry title="Endpoint" field="endpoint" description="e.g. https://your-resource.openai.azure.com">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Deployment name" field="deploymentName"
+           description="The deployment name configured in Azure AI Foundry / Azure OpenAI Studio - this determines the model, not a separate model field.">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Credential" field="credentialsId"
+           description="A 'Secret text' credential containing your Azure OpenAI API key. Never logged or persisted outside Jenkins' credential store.">
+    <c:select/>
+  </f:entry>
+
+  <f:advanced>
+    <f:entry title="API version" field="apiVersion"
+             description="Defaults to 2024-10-21 (the last GA, non-preview dated version) if left blank.">
+      <f:textbox/>
+    </f:entry>
+  </f:advanced>
+</j:jelly>

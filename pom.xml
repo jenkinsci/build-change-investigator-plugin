@@ -48,6 +48,19 @@
     <ban-commons-lang-2.skip>false</ban-commons-lang-2.skip>
     <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
     <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
+
+    <aws-credentials.version>265.v8422a_f384cd9</aws-credentials.version>
+    <aws-sdk.version>2.54.11</aws-sdk.version>
+    <!-- The AWS SDK v2 modules the Bedrock provider needs (bedrockruntime, url-connection-client)
+         are plain (non-plugin) jars, so the hpi-maven-plugin bundles them, along with their own
+         minimal required transitive dependencies, directly into this plugin's .hpi.
+         hpi.strictBundledArtifacts (above) requires this list to be declared explicitly rather
+         than silently accepting whatever a dependency bump changes it to; this exact list is
+         what `mvn verify` itself reports as actually bundled, after excluding both bedrockruntime's
+         default apache5-client/netty-nio-client transports (unused - BedrockProvider always
+         supplies its own url-connection-client) and aws-credentials' own unrelated transitive
+         EC2 SDK trees (unused - only AmazonWebServicesCredentials#resolveCredentials is called). -->
+    <hpi.bundledArtifacts>annotations,auth,aws-core,aws-json-protocol,bedrockruntime,checksums,checksums-spi,endpoints-spi,eventstream,http-auth,http-auth-aws,http-auth-aws-eventstream,http-auth-spi,http-client-spi,identity-spi,json-utils,metrics-spi,profiles,protocol-core,reactive-streams,regions,retries,retries-spi,sdk-core,slf4j-api,third-party-jackson-core,url-connection-client,utils,utils-lite</hpi.bundledArtifacts>
   </properties>
 
   <dependencyManagement>
@@ -56,6 +69,16 @@
         <groupId>io.jenkins.tools.bom</groupId>
         <artifactId>bom-2.541.x</artifactId>
         <version>6931.vea_a_b_c6fd017d</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!-- Bedrock's Converse API needs AWS SDK v2, which the Jenkins BOM does not manage
+           (it manages only Jenkins plugin coordinates) - imported here so bedrockruntime and
+           url-connection-client below resolve to matching, mutually-compatible versions. -->
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>${aws-sdk.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -68,6 +91,30 @@
     <dependency>
       <groupId>io.jenkins.plugins</groupId>
       <artifactId>ionicons-api</artifactId>
+    </dependency>
+    <!-- Optional AmazonWebServicesCredentials type for the AWS Bedrock provider - lets an
+         admin select a Jenkins-managed AWS key pair instead of relying on the AWS SDK's
+         default credential chain (env vars / instance IAM role). Not in the Jenkins BOM at
+         this Jenkins baseline, so pinned explicitly; its own required core version
+         (2.479.3) is well below this plugin's 2.541.3 baseline.
+
+         Deliberately NOT excluding aws-credentials' own transitive SDK trees
+         (io.jenkins.plugins.aws-java-sdk2:aws-java-sdk2-ec2, org.jenkins-ci.plugins.aws-java-sdk:aws-java-sdk-ec2)
+         even though this plugin's own code only ever calls
+         AmazonWebServicesCredentials#resolveCredentials(String): AWSCredentialsImpl's *own*
+         fields (IAM role ARN / assume-role support) reference
+         software.amazon.awssdk.services.sts.model.AssumeRoleRequest, which XStream needs to
+         resolve whenever a credential of this type is saved - confirmed by an earlier attempt
+         at this exclusion failing with NoClassDefFoundError on exactly that class the moment a
+         real AWSCredentialsImpl was persisted in a test. Neither of aws-java-sdk2-ec2 nor
+         aws-java-sdk-ec2 is itself bundled into this plugin's .hpi regardless (hpi-maven-plugin
+         correctly recognizes both as Jenkins plugin dependencies, not raw jars to copy in) - see
+         the apache5-client exclusion below for the one raw-jar leak that genuinely needed
+         fixing. -->
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>aws-credentials</artifactId>
+      <version>${aws-credentials.version}</version>
     </dependency>
     <!-- Credentials handling for the AI provider API token -->
     <dependency>
@@ -84,6 +131,32 @@
     <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>plain-credentials</artifactId>
+    </dependency>
+
+    <!-- AWS Bedrock Converse API. The AWS SDK v2 service-client parent POM defaults every
+         service module to bundling BOTH apache5-client (HttpClient 5, ~2.4MB with its own
+         transitive httpclient5/httpcore5/httpcore5-h2) and netty-nio-client - excluded here
+         and replaced with the much lighter blocking url-connection-client, since this plugin
+         only ever makes one synchronous call at a time - see BedrockProvider. (Not
+         "apache-client", the legacy HttpClient 4-based artifact id from older SDK versions -
+         current versions default to "apache5-client".) -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>bedrockruntime</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>apache5-client</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>netty-nio-client</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
     </dependency>
 
     <!-- Test-only -->

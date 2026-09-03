@@ -1,6 +1,7 @@
 package io.jenkins.plugins.changeinvestigator.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jenkins.plugins.changeinvestigator.ai.provider.AiProviderConfig;
 import io.jenkins.plugins.changeinvestigator.evidence.BuildInvestigationEvidence;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -8,7 +9,9 @@ import java.util.logging.Logger;
 /**
  * Orchestrates one AI analysis: builds the prompt, calls the configured provider, parses the
  * result. Never throws - every failure mode becomes a {@link AiAssessment#failed(String)} so
- * callers can always render observed evidence even when AI analysis is unavailable.
+ * callers can always render observed evidence even when AI analysis is unavailable. Which
+ * provider is called, and how, is entirely delegated to {@code providerConfig} - this class
+ * knows nothing about any specific provider's API.
  */
 public final class AiAnalysisService {
 
@@ -20,19 +23,19 @@ public final class AiAnalysisService {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * @param apiToken resolved credential plaintext, passed straight through to the HTTP client
-     *                 and never retained by this service or by {@link AiProviderConfig}.
-     */
-    public AiAssessment analyze(BuildInvestigationEvidence evidence, AiProviderConfig config, String apiToken) {
+    public AiAssessment analyze(
+            BuildInvestigationEvidence evidence,
+            AiProviderConfig providerConfig,
+            int timeoutSeconds,
+            double temperature) {
         PromptBuilder promptBuilder = new PromptBuilder(objectMapper);
-        OpenAiCompatibleClient client = new OpenAiCompatibleClient(config, objectMapper);
-        AiResponseParser parser = new AiResponseParser(objectMapper, config.model());
 
         try {
-            String rawContent =
-                    client.chatCompletion(promptBuilder.systemPrompt(), promptBuilder.userContent(evidence), apiToken);
-            return parser.parse(rawContent);
+            AiProvider provider = providerConfig.createProvider(objectMapper, timeoutSeconds);
+            AiAnalysisResult result = provider.chatCompletion(new AiAnalysisRequest(
+                    promptBuilder.systemPrompt(), promptBuilder.userContent(evidence), temperature));
+            AiResponseParser parser = new AiResponseParser(objectMapper, result.providerDisplayName(), result.model());
+            return parser.parse(result.responseText());
         } catch (AiAnalysisException e) {
             // FINER, not INFO: the same information is already shown to the user via the
             // AiAssessment.failed() message below, so logging it at INFO would just duplicate

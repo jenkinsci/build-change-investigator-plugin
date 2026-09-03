@@ -138,7 +138,7 @@
                 <j:forEach var="chk" items="${it.aiAssessment.recommendedChecks}"><li>${chk}</li></j:forEach>
               </ol>
             </j:if>
-            <p class="jenkins-!-color-secondary">Model: ${it.aiAssessment.modelUsed}</p>
+            <p class="jenkins-!-color-secondary">Provider: ${it.aiAssessment.providerUsed} &#183; Model: ${it.aiAssessment.modelUsed}</p>
           </j:when>
           <j:when test="${it.hasAiAssessment() and it.aiAssessment.failed}">
             <l:notice title="AI unavailable - showing observed evidence only" icon="symbol-warning-outline">

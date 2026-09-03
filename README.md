@@ -70,12 +70,13 @@ method above.
   verified running on all three, matching the Java versions the `2.541.x` Jenkins LTS line
   itself supports.
 - The [Credentials](https://plugins.jenkins.io/credentials/),
-  [Plain Credentials](https://plugins.jenkins.io/plain-credentials/), and
+  [Plain Credentials](https://plugins.jenkins.io/plain-credentials/),
+  [AWS Credentials](https://plugins.jenkins.io/aws-credentials/), and
   [Ionicons API](https://plugins.jenkins.io/ionicons-api/) plugins (installed automatically as
-  dependencies - no manual action needed).
-- Optional: an OpenAI-compatible chat-completions API endpoint if you want the AI assessment
-  feature - see [Supported AI providers](#supported-ai-providers) for exactly what that does
-  and does not include. Everything else works without it.
+  dependencies - no manual action needed; AWS Credentials is only exercised if you configure the
+  AWS Bedrock provider).
+- Optional: any of the providers under [Supported AI providers](#supported-ai-providers) if you
+  want the AI assessment feature. Everything else works without it.
 
 ## How it works
 
@@ -181,47 +182,75 @@ investigation works independently of AI.*
 
 ## Supported AI providers
 
-Build Change Investigator works with **OpenAI-compatible chat-completions APIs**. It does not
-require OpenAI specifically - any endpoint that accepts a `POST {base URL}/chat/completions`
-request in the OpenAI request/response shape can be configured.
+Build Change Investigator has a pluggable **AI provider** architecture: pick a provider from a
+dropdown in the global configuration, and only the fields that provider actually needs are
+shown. Every provider - native or generic - is reached through the same normalized request/
+result boundary, so the rest of the plugin (prompt building, response parsing, evidence
+collection) never needs to know which one is configured.
 
-**What the plugin actually sends and expects:** a JSON body containing `model` (exactly what
-you type into the Model field), `temperature`, and a two-message `messages` array (`system` +
-`user`) - no `max_tokens` or other fields. It reads the response as
-`choices[0].message.content`, matching OpenAI's own non-streaming chat-completions response
-shape. Authentication is always a single `Authorization: Bearer <token>` header, sourced from a
-Jenkins **Secret text** credential - there is no support for a custom header name, an
-`api-key`-style header, extra query parameters, or unauthenticated requests. A credential must
-always be selected, even when the target server itself does not check it.
+Two kinds of provider exist:
 
-**Models are not hardcoded.** There is no allowlist - the `Model` field is sent to the endpoint
-exactly as typed, so any model identifier your configured endpoint accepts will be requested
-as-is.
+- **Native providers** speak that vendor's own real API contract directly - the correct
+  endpoint shape, headers, and auth for that specific vendor. OpenAI, Anthropic Claude, AWS
+  Bedrock, Azure OpenAI, Google Gemini, and Ollama are all native.
+- **Generic OpenAI-compatible** is a catch-all for anything that speaks the OpenAI
+  "chat completions" shape but isn't one of the providers above - self-hosted gateways,
+  proxies, and third-party aggregators.
 
 ### Support matrix
 
-Statuses reflect whether the provider's documented API contract matches what this plugin sends,
-not a live integration test against that provider - the automated test suite exercises this
-contract against a local mock server, not against any of these services directly.
+Statuses reflect whether the implementation's request/response handling matches the provider's
+documented API contract, verified against each vendor's own current documentation and exercised
+against a local mock server reproducing that contract - not a live integration test against the
+real service (this repository's automated test suite never depends on a real external API key).
 
-| Provider / API style | Status | Notes |
-|---|---|---|
-| OpenAI | Confirmed compatible | The native shape this plugin implements; `Authorization: Bearer` matches OpenAI's own auth. |
-| OpenRouter | Likely compatible | Documented endpoint (`https://openrouter.ai/api/v1/chat/completions`) and `Authorization: Bearer` auth match this plugin's request shape exactly. |
-| LiteLLM proxy | Likely compatible | Documented to expose `/v1/chat/completions` with `Authorization: Bearer <virtual key>` - matches. |
-| vLLM (OpenAI-compatible server) | Likely compatible | Documented `/v1/chat/completions` endpoint; Bearer auth is optional server-side, and any token value satisfies this plugin's "a credential must be set" requirement. |
-| Ollama (OpenAI-compatible API) | Likely compatible | `http://<host>:11434/v1/chat/completions` matches; Ollama does not check the API key, so a placeholder Jenkins credential value works. |
-| LM Studio | Likely compatible | Exposes a local OpenAI-compatible `/v1/chat/completions`-shaped endpoint that tolerates a Bearer header per its own documentation. |
-| Azure OpenAI | **Not supported as implemented** | Azure's chat-completions endpoint requires the path `/openai/deployments/{deployment}/chat/completions` plus a mandatory `?api-version=` query parameter, and its primary auth is an `api-key` header (`Authorization: Bearer` is only valid for short-lived Microsoft Entra ID tokens, which this plugin has no mechanism to refresh). This plugin always calls a fixed `{base URL}/chat/completions` with a static `Authorization: Bearer` header and no query-string support, so it cannot express Azure's required request shape. |
-| Any other OpenAI-compatible gateway not listed above | Unverified | Compatibility depends entirely on whether it accepts a plain `{base URL}/chat/completions` POST with `Authorization: Bearer` and returns `choices[0].message.content`. |
+| Provider | Status | Auth | Notes |
+|---|---|---|---|
+| OpenAI | Confirmed compatible | `Authorization: Bearer` via Jenkins credential | Native `/chat/completions`; base URL defaults to `https://api.openai.com/v1`, overridable in Advanced settings. |
+| Anthropic Claude | Confirmed compatible | `x-api-key` + `anthropic-version` header via Jenkins credential | Native Messages API (`/v1/messages`) - not routed through the OpenAI adapter, since the request/response shape and auth are genuinely different. |
+| AWS Bedrock | Confirmed compatible | Optional Jenkins `AWS Credentials`, else the AWS SDK's default credential chain (e.g. an IAM role on the controller/agent) | Native Bedrock Runtime `Converse` API, which normalizes across every model family Bedrock hosts. Requires the `bedrock:InvokeModel` IAM permission on the selected model/inference profile. |
+| Azure OpenAI | Confirmed compatible | `api-key` header via Jenkins credential | Native, using Azure's classic dated-`api-version` REST surface (`/openai/deployments/{deployment}/chat/completions?api-version=...`) - the deployment name in the URL determines the model, not a request body field. |
+| Google Gemini | Confirmed compatible | `x-goog-api-key` header via Jenkins credential | Native `generateContent` REST API (`v1beta`). |
+| Ollama | Confirmed compatible | None required | Native convenience wrapper over the same OpenAI-compatible shape Ollama exposes (`{base URL}/chat/completions`); no credential is offered since Ollama does not check one. See the Ollama note below about "localhost" in containerized Jenkins. |
+| Generic OpenAI-compatible (OpenRouter, LiteLLM, vLLM, LM Studio, etc.) | Likely compatible | `Authorization: Bearer` via an *optional* Jenkins credential | Same catch-all as before: any endpoint accepting `POST {base URL}/chat/completions` in the OpenAI shape. Not a specific vendor's documented contract, so "likely" rather than "confirmed" for any individual gateway. |
+| Any other endpoint not listed above | Unverified | - | Use Generic OpenAI-compatible; works only if that endpoint actually follows the OpenAI request/response shape. |
+
+**Azure OpenAI was previously unsupported** in the single-adapter architecture this plugin
+started with (its URL and auth shape don't fit a generic `{base URL}/chat/completions` +
+`Authorization: Bearer` client). It is now supported natively, as shown above.
 
 ### Models
 
-Model names are not hardcoded; use the model identifier expected by your configured endpoint
-(for example `gpt-4o-mini` for OpenAI, or a local model name for Ollama/vLLM/LM Studio). A
-non-OpenAI model such as a Claude or Llama model is only reachable through an OpenAI-compatible
-gateway/proxy that translates the request into that model's own API - this plugin never talks
-to Anthropic's or any other vendor's native API directly.
+Model names are not hardcoded for any provider - there is no allowlist. Each provider's Model
+(or, for Azure, Deployment name) field is sent to the endpoint exactly as typed, so any model
+identifier your account/deployment/endpoint accepts will be requested as-is. A few current
+provider defaults/examples are shown as placeholders in the configuration UI, purely as a
+convenience - not as a claim that only those models work. Model identifiers are entirely
+provider-defined and user-configurable.
+
+If you want to reach a model that isn't natively supported here (e.g. a model only available
+through a third-party aggregator), route it through **Generic OpenAI-compatible** pointed at
+that aggregator's endpoint - this plugin never talks to a model vendor's native API on your
+behalf beyond the six native providers listed above.
+
+### Ollama and other local models
+
+Ollama's default base URL is deliberately **not** pre-filled with `http://localhost:11434/v1`:
+on a containerized Jenkins controller or agent, "localhost" refers to the container itself, not
+the host machine actually running Ollama, and defaulting to it would silently fail for most
+real setups. Use `http://host.docker.internal:11434/v1` for Docker Desktop, or your Ollama
+host's actual LAN address/hostname otherwise. The same reasoning applies to vLLM or LM Studio
+configured through Generic OpenAI-compatible.
+
+### AWS Bedrock
+
+The AWS credential is optional. Leave it unset to use the AWS SDK's standard credential chain -
+in practice, an IAM role attached to the Jenkins controller or agent, which is the common
+enterprise setup and keeps no static AWS key material in Jenkins at all. Set it to a Jenkins
+**AWS Credentials** credential (from the
+[AWS Credentials plugin](https://plugins.jenkins.io/aws-credentials/), installed automatically
+as a dependency) if you need to pin a specific access key instead. Either way, no raw AWS secret
+is ever pasted directly into this plugin's own configuration.
 
 ## Configuration
 
@@ -230,22 +259,27 @@ Go to **Manage Jenkins → System → Build Change Investigator**:
 | Field | Description |
 |---|---|
 | Enable AI analysis of investigations | Off by default. Deterministic evidence works regardless of this setting; the fields below only appear once this is checked. |
-| Base URL | OpenAI-compatible base URL, e.g. `https://api.openai.com/v1`. `/chat/completions` is appended automatically. |
-| Model | Model name to request, e.g. `gpt-4o-mini`. |
-| API Token Credential | A Jenkins **Secret text** credential holding the provider's API token. Never logged or displayed. |
-| Max Log Context Characters | Upper bound on how much (already-reduced, already-redacted) log text is sent to the AI provider. |
-| Connection Timeout (seconds) | Seconds to wait for the AI provider before giving up. |
-| Temperature | Sampling temperature; kept low by default. |
-| Test Connection | Sends a minimal request to verify the configuration works before relying on it. |
+| AI Provider | Selects which provider's fields appear below - see [Supported AI providers](#supported-ai-providers). |
+| *(provider-specific fields)* | Model/deployment, endpoint/region where applicable, and a credential - shown only for the selected provider. |
+| Test Connection | Sends a single minimal request (never real build evidence) to verify the saved configuration works. Save the form first, then test. |
+| Temperature *(Advanced)* | Sampling temperature; kept low by default. Applies to every provider. |
+| Connection Timeout (seconds) *(Advanced)* | Seconds to wait for the AI provider before giving up. Applies to every provider. |
+| Max Log Context Characters *(Advanced)* | Upper bound on how much (already-reduced, already-redacted) log text is sent to the AI provider. Applies to every provider. |
 
-All secrets (the AI provider's API token) are handled exclusively through the Jenkins
-Credentials plugin - there is no field anywhere in this plugin for pasting a raw secret, and
-v1 does not support custom HTTP headers of any kind (including header-based auth schemes) for
-the AI request. If your provider requires an authentication method other than an
-`Authorization: Bearer` header, it is not supported in this version.
+All secrets (API keys, AWS credentials) are handled exclusively through Jenkins Credentials -
+there is no field anywhere in this plugin for pasting a raw secret directly. Only Jenkins
+administrators (`Jenkins.ADMINISTER`) can view or change these settings, and no credential value
+is ever exposed back to the browser.
 
-Only Jenkins administrators (`Jenkins.ADMINISTER`) can view or change these settings, and the
-API token value is never exposed back to the browser.
+### Upgrading from a single-provider configuration
+
+If you configured AI analysis before this plugin supported multiple providers (a saved Base
+URL/Model/Credential with no provider selector), your configuration is migrated automatically
+the first time this version loads it: those settings become a **Generic OpenAI-compatible**
+provider with the same base URL, model, and credential reference as before. Nothing is lost, no
+secret is touched (the credential ID is carried over as-is; the actual secret already lived in,
+and stays in, the Jenkins Credentials store), and no AI request is made as part of migrating.
+Re-save the configuration afterward if you'd like to switch to a native provider instead.
 
 ### Permissions
 
@@ -321,11 +355,34 @@ The deterministic evidence remains useful even when AI analysis is disabled.
                      └───────────────┬─────────────┘
                                      ▼
                      ┌─────────────────────────────┐
-                     │ AiAnalysisService             │  PromptBuilder → OpenAiCompatibleClient
-                     │ (ai package)                  │  (java.net.http.HttpClient) →
-                     │                                │  AiResponseParser → AiAssessment
-                     └─────────────────────────────┘  (also persisted with the build)
+                     │ AiAnalysisService             │  PromptBuilder → AiProviderConfig
+                     │ (ai package)                  │  .createProvider() → AiProvider
+                     │                                │  .chatCompletion() → AiResponseParser
+                     └─────────────────────────────┘  → AiAssessment (persisted with the build)
 ```
+
+The `AiProvider` interface (`ai` package) is the boundary `AiAnalysisService` calls through -
+everything above it is provider-agnostic, and everything below it is one adapter's problem:
+
+```
+AiProviderConfig (ai.provider package, one per dropdown entry in "AI Provider")
+    │  a Describable holding only that provider's non-secret settings
+    │  (endpoint/deployment/region/model/credential ID); createProvider()
+    │  resolves the credential just-in-time and returns an AiProvider
+    ▼
+AiProvider.chatCompletion(AiAnalysisRequest) → AiAnalysisResult
+    │
+    ├── OpenAiProviderConfig, OpenAiCompatibleProviderConfig, OllamaProviderConfig
+    │     → OpenAiChatCompletionsProvider (shared - identical OpenAI-shaped wire contract)
+    ├── AnthropicProviderConfig       → AnthropicProvider (native Messages API)
+    ├── AzureOpenAiProviderConfig     → AzureOpenAiProvider (native, api-key auth)
+    ├── GeminiProviderConfig         → GeminiProvider (native generateContent API)
+    └── BedrockProviderConfig        → BedrockProvider (AWS SDK v2, Converse API)
+```
+
+Adding a future provider means implementing one more `AiProviderConfig` + `AiProvider` pair and
+registering it as an `@Extension` - nothing in `AiAnalysisService`, `PromptBuilder`,
+`AiResponseParser`, or the investigation UI needs to change.
 
 Key Jenkins extension points used:
 
@@ -336,10 +393,16 @@ Key Jenkins extension points used:
 - `jenkins.scm.RunWithSCM` - the SCM-agnostic changelog API (implemented by both
   `AbstractBuild` and `WorkflowRun`), so no Git-specific dependency is needed.
 - `jenkins.model.GlobalConfiguration` - the administrator-facing settings page.
+- `hudson.model.Describable`/`Descriptor` + `f:dropdownDescriptorSelector` - the "AI Provider"
+  picker, the same Jenkins-native pattern used elsewhere in core for "choose one implementation,
+  show only its fields" configuration UIs.
 - `hudson.security.Permission` - the custom `RunChangeInvestigationAnalysis` permission.
-- Jenkins **Credentials API** (`StringCredentials`) - for the AI provider's API token.
-- Outbound AI requests are made through `hudson.ProxyConfiguration.newHttpClientBuilder()`, so
-  they honor the Jenkins instance's own configured HTTP proxy.
+- Jenkins **Credentials API** (`StringCredentials` for API-key providers,
+  `AmazonWebServicesCredentials` for Bedrock) - never a raw secret pasted into this plugin's
+  own configuration.
+- Outbound HTTP-based AI requests are made through `hudson.ProxyConfiguration.newHttpClientBuilder()`,
+  so they honor the Jenkins instance's own configured HTTP proxy. (AWS Bedrock uses the AWS SDK's
+  own transport instead, per its SigV4 signing requirements.)
 
 ## Privacy and security
 

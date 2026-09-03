@@ -1,0 +1,22 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:c="/lib/credentials">
+  <f:entry title="Region" field="region" description="e.g. us-east-1">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Model / inference profile ID" field="model"
+           description="e.g. us.anthropic.claude-sonnet-4-5-20250929-v1:0 - a base model ID or a cross-region inference profile ID, as required by your chosen model.">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Credential" field="credentialsId"
+           description="An 'AWS Credentials' credential (access key + secret key). Optional - leave unset to use the AWS SDK's default credential chain, e.g. an IAM role attached to the Jenkins controller or agent.">
+    <c:select/>
+  </f:entry>
+
+  <f:block>
+    <div class="jenkins-!-color-secondary">
+      Requires the bedrock:InvokeModel IAM permission on the selected model/inference profile.
+    </div>
+  </f:block>
+</j:jelly>

@@ -23,10 +23,12 @@ public final class AiResponseParser {
             Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
 
     private final ObjectMapper objectMapper;
+    private final String providerUsed;
     private final String modelUsed;
 
-    public AiResponseParser(ObjectMapper objectMapper, String modelUsed) {
+    public AiResponseParser(ObjectMapper objectMapper, String providerUsed, String modelUsed) {
         this.objectMapper = objectMapper;
+        this.providerUsed = providerUsed;
         this.modelUsed = modelUsed;
     }
 
@@ -74,6 +76,7 @@ public final class AiResponseParser {
                 supportingEvidence,
                 recommendedChecks,
                 insufficientEvidence,
+                providerUsed,
                 modelUsed);
     }
 
