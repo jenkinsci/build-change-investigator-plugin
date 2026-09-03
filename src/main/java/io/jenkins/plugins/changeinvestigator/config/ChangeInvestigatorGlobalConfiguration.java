@@ -1,27 +1,18 @@
 package io.jenkins.plugins.changeinvestigator.config;
 
-import com.cloudbees.plugins.credentials.CredentialsMatchers;
-import com.cloudbees.plugins.credentials.CredentialsProvider;
-import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import hudson.BulkChange;
 import hudson.Extension;
 import hudson.util.FormValidation;
-import hudson.util.ListBoxModel;
-import hudson.util.Secret;
-import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException;
-import io.jenkins.plugins.changeinvestigator.ai.AiProviderConfig;
-import io.jenkins.plugins.changeinvestigator.ai.OpenAiCompatibleClient;
+import io.jenkins.plugins.changeinvestigator.ai.provider.AiProviderConfig;
+import io.jenkins.plugins.changeinvestigator.ai.provider.OpenAiCompatibleProviderConfig;
 import java.io.IOException;
-import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import jenkins.model.GlobalConfiguration;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
-import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.kohsuke.stapler.DataBoundSetter;
-import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest2;
 import org.kohsuke.stapler.verb.POST;
 
@@ -30,6 +21,12 @@ import org.kohsuke.stapler.verb.POST;
  * Deterministic evidence collection (the "OBSERVED EVIDENCE" section of an investigation)
  * never depends on any setting here; these settings only affect the optional "AI ASSESSMENT"
  * section.
+ *
+ * <p>Which AI provider is used, and that provider's own settings (endpoint, deployment,
+ * region, credential, ...), live on {@link #providerConfig} - one of the
+ * {@link AiProviderConfig} subclasses selected from the "AI Provider" dropdown. Settings that
+ * apply identically regardless of provider - temperature, timeout, max log context characters -
+ * stay here as global "Advanced settings" rather than being duplicated onto every provider.
  */
 @Extension
 public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
@@ -41,12 +38,24 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
     public static final double DEFAULT_TEMPERATURE = 0.2;
 
     private boolean aiEnabled;
-    private String baseUrl = "https://api.openai.com/v1";
-    private String model = "gpt-4o-mini";
-    private String credentialsId;
+    private AiProviderConfig providerConfig;
     private int maxLogContextChars = DEFAULT_MAX_LOG_CONTEXT_CHARS;
     private int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
     private double temperature = DEFAULT_TEMPERATURE;
+
+    // Pre-multi-provider configuration format, kept only so XStream can still populate these
+    // from a config.xml saved by an older release; readResolve() below migrates them into
+    // providerConfig on load and they are never read again afterward. Do not remove without a
+    // deprecation cycle - doing so would silently drop AI configuration for every existing
+    // installation on upgrade.
+    @Deprecated
+    private transient String baseUrl;
+
+    @Deprecated
+    private transient String model;
+
+    @Deprecated
+    private transient String credentialsId;
 
     public ChangeInvestigatorGlobalConfiguration() {
         load();
@@ -54,6 +63,26 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
 
     public static ChangeInvestigatorGlobalConfiguration get() {
         return GlobalConfiguration.all().get(ChangeInvestigatorGlobalConfiguration.class);
+    }
+
+    /**
+     * Migrates a pre-multi-provider {@code config.xml} (flat {@code baseUrl}/{@code model}/
+     * {@code credentialsId} fields directly on this class) into an equivalent
+     * {@link OpenAiCompatibleProviderConfig} - the closest match to what those flat fields
+     * always meant: an arbitrary OpenAI-compatible endpoint. Runs on load, before any AI call
+     * could possibly be triggered, and makes no network call itself. The migrated credential ID
+     * is carried over unchanged - the secret it points to lives in the Jenkins Credentials
+     * store either way and is never touched by this migration.
+     */
+    protected Object readResolve() {
+        if (providerConfig == null && baseUrl != null && !baseUrl.isBlank()) {
+            providerConfig = new OpenAiCompatibleProviderConfig(baseUrl, model, credentialsId);
+            LOGGER.log(
+                    Level.INFO,
+                    "Migrated Build Change Investigator AI configuration from the pre-multi-provider format "
+                            + "to a Generic OpenAI-compatible provider.");
+        }
+        return this;
     }
 
     /**
@@ -85,33 +114,13 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
         save();
     }
 
-    public String getBaseUrl() {
-        return baseUrl;
+    public AiProviderConfig getProviderConfig() {
+        return providerConfig;
     }
 
     @DataBoundSetter
-    public void setBaseUrl(String baseUrl) {
-        this.baseUrl = baseUrl;
-        save();
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    @DataBoundSetter
-    public void setModel(String model) {
-        this.model = model;
-        save();
-    }
-
-    public String getCredentialsId() {
-        return credentialsId;
-    }
-
-    @DataBoundSetter
-    public void setCredentialsId(String credentialsId) {
-        this.credentialsId = credentialsId;
+    public void setProviderConfig(AiProviderConfig providerConfig) {
+        this.providerConfig = providerConfig;
         save();
     }
 
@@ -146,130 +155,17 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
     }
 
     /**
-     * Resolves the configured credential to a plaintext token. Never logs or persists the
-     * value, and never stores it in {@link AiProviderConfig} or any other record/field with
-     * generated {@code toString()}/{@code equals()}/{@code hashCode()} - callers must pass it
-     * directly to the one place that needs it ({@link OpenAiCompatibleClient}) and let it go
-     * out of scope immediately after.
-     *
-     * <p>Uses {@link Secret#getPlainText()} rather than the deprecated
-     * {@link Secret#toString(Secret)} helper - despite the similar name, {@code Secret}'s own
-     * {@code toString()} (and the static helper that wraps it) also returns the plaintext
-     * value, not an encrypted/opaque form, which is easy to assume incorrectly.
-     */
-    public String resolveApiToken() {
-        if (credentialsId == null || credentialsId.isBlank()) {
-            return null;
-        }
-        StringCredentials credentials = CredentialsMatchers.firstOrNull(
-                CredentialsProvider.lookupCredentialsInItemGroup(
-                        StringCredentials.class, Jenkins.get(), hudson.security.ACL.SYSTEM2, List.of()),
-                CredentialsMatchers.withId(credentialsId));
-        return credentials == null ? null : credentials.getSecret().getPlainText();
-    }
-
-    /** Non-secret settings only - see {@link AiProviderConfig} for why the token is excluded. */
-    public AiProviderConfig toProviderConfig() {
-        return new AiProviderConfig(baseUrl, model, timeoutSeconds, temperature, maxLogContextChars);
-    }
-
-    /**
-     * Populates the credential dropdown.
-     *
-     * <p>Marked {@code @POST}: the credentials-plugin {@code <c:select>} tag used in
-     * {@code config.jelly} does not implement its own AJAX fill mechanism - its Jelly tag
-     * definition (confirmed on both {@code master} and the latest released
-     * {@code credentials-2.6.2}) renders Jenkins core's own {@code <f:select>} internally for
-     * the actual dropdown, and core's fill mechanism ({@code updateListBox} in
-     * {@code lib/form/select/select.js}) unconditionally issues the fill request as a
-     * crumb-protected HTTP POST - there is no GET path for it. So this annotation matches what
-     * the browser already sends; it does not change the dropdown's behavior, only rejects
-     * requests that were never coming from it in the first place.
+     * Delegates to the selected provider's own lightweight validation call - see
+     * {@link AiProviderConfig#testConnection}. Never sends any real build evidence, only a
+     * fixed instruction-only exchange, regardless of which provider is selected.
      */
     @POST
-    public ListBoxModel doFillCredentialsIdItems(@QueryParameter String credentialsId) {
-        Jenkins jenkins = Jenkins.get();
-        jenkins.checkPermission(Jenkins.ADMINISTER);
-        return new StandardListBoxModel()
-                .includeEmptyValue()
-                .includeMatchingAs(
-                        hudson.security.ACL.SYSTEM2,
-                        jenkins,
-                        StringCredentials.class,
-                        List.of(),
-                        CredentialsMatchers.always())
-                .includeCurrentValue(credentialsId);
-    }
-
-    @POST
-    public FormValidation doTestConnection(
-            @QueryParameter String baseUrl,
-            @QueryParameter String model,
-            @QueryParameter String credentialsId,
-            @QueryParameter int timeoutSeconds) {
+    public FormValidation doTestConnection() {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
-
-        if (baseUrl == null || baseUrl.isBlank()) {
-            return FormValidation.error("Base URL is required.");
+        if (providerConfig == null) {
+            return FormValidation.error("Select and configure an AI provider first.");
         }
-        if (credentialsId == null || credentialsId.isBlank()) {
-            return FormValidation.error("Select a credential containing the API token first.");
-        }
-
-        StringCredentials credentials = CredentialsMatchers.firstOrNull(
-                CredentialsProvider.lookupCredentialsInItemGroup(
-                        StringCredentials.class, Jenkins.get(), hudson.security.ACL.SYSTEM2, List.of()),
-                CredentialsMatchers.withId(credentialsId));
-        if (credentials == null) {
-            return FormValidation.error("The selected credential could not be found.");
-        }
-
-        AiProviderConfig testConfig = new AiProviderConfig(
-                baseUrl,
-                (model == null || model.isBlank()) ? "gpt-4o-mini" : model,
-                timeoutSeconds <= 0 ? DEFAULT_TIMEOUT_SECONDS : timeoutSeconds,
-                0.0,
-                200);
-        try {
-            new OpenAiCompatibleClient(testConfig, new ObjectMapper())
-                    .chatCompletion(
-                            "Respond with exactly: {\"ok\":true}",
-                            "Respond with exactly: {\"ok\":true}",
-                            credentials.getSecret().getPlainText());
-            return FormValidation.ok("Connection succeeded.");
-        } catch (AiAnalysisException e) {
-            LOGGER.log(Level.FINE, "Test connection failed", e);
-            return FormValidation.error("Connection failed (" + e.getKind() + "): " + e.getMessage());
-        }
-    }
-
-    /*
-     * doCheckTimeoutSeconds and doCheckMaxLogContextChars were removed: both fields are plain
-     * positive integers with no domain-specific rule beyond "> 0", which the Jelly-side
-     * clazz="positive-number-required" client-side validation (see config.jelly) now enforces
-     * directly - see https://www.jenkins.io/doc/developer/security/form-validation/ and
-     * core's lib/form/number.jelly. doCheckBaseUrl is kept below because URL-shape validation
-     * ("starts with http:// or https://") is not one of the built-in clazz keywords.
-     */
-
-    // Read-only form validation: makes no network request, mutates no state, does no
-    // expensive work, and is already gated by the hasPermission(ADMINISTER) check below
-    // (falling back to a harmless ok() for non-admins rather than throwing). Per
-    // jenkins-infra/jenkins-codeql's own WebMethodMissingPostAnnotation false-positive
-    // criteria (no side effects), this is intentionally left as GET-style validation rather
-    // than @POST/@RequirePOST - see
-    // https://www.jenkins.io/doc/developer/security/form-validation/. The suppression below
-    // is scoped to exactly this method and exactly the jenkins/csrf query.
-    @SuppressWarnings("lgtm[jenkins/csrf]")
-    public FormValidation doCheckBaseUrl(@QueryParameter String value) {
-        if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
-            return FormValidation.ok();
-        }
-        if (value == null || value.isBlank()) {
-            return FormValidation.warning("Required if AI analysis is enabled.");
-        }
-        return (value.startsWith("http://") || value.startsWith("https://"))
-                ? FormValidation.ok()
-                : FormValidation.error("Must be a full URL starting with http:// or https://.");
+        return providerConfig.testConnection(
+                new ObjectMapper(), timeoutSeconds > 0 ? timeoutSeconds : DEFAULT_TIMEOUT_SECONDS);
     }
 }

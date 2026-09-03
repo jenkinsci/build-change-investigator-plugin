@@ -37,6 +37,7 @@ public final class AiAssessment implements Serializable {
     private final List<String> recommendedChecks;
     private final boolean insufficientEvidence;
 
+    private final String providerUsed;
     private final String modelUsed;
     private final long generatedAtMillis;
 
@@ -49,6 +50,7 @@ public final class AiAssessment implements Serializable {
             List<String> supportingEvidence,
             List<String> recommendedChecks,
             boolean insufficientEvidence,
+            String providerUsed,
             String modelUsed,
             long generatedAtMillis) {
         this.state = state;
@@ -60,17 +62,28 @@ public final class AiAssessment implements Serializable {
                 supportingEvidence == null ? Collections.emptyList() : List.copyOf(supportingEvidence);
         this.recommendedChecks = recommendedChecks == null ? Collections.emptyList() : List.copyOf(recommendedChecks);
         this.insufficientEvidence = insufficientEvidence;
+        this.providerUsed = providerUsed;
         this.modelUsed = modelUsed;
         this.generatedAtMillis = generatedAtMillis;
     }
 
     public static AiAssessment disabled() {
-        return new AiAssessment(State.DISABLED, null, null, null, null, null, null, false, null, 0);
+        return new AiAssessment(State.DISABLED, null, null, null, null, null, null, false, null, null, 0);
     }
 
     public static AiAssessment failed(String errorMessage) {
         return new AiAssessment(
-                State.FAILED, errorMessage, null, null, null, null, null, false, null, System.currentTimeMillis());
+                State.FAILED,
+                errorMessage,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null,
+                System.currentTimeMillis());
     }
 
     public static AiAssessment completed(
@@ -80,6 +93,7 @@ public final class AiAssessment implements Serializable {
             List<String> supportingEvidence,
             List<String> recommendedChecks,
             boolean insufficientEvidence,
+            String providerUsed,
             String modelUsed) {
         return new AiAssessment(
                 State.COMPLETED,
@@ -90,6 +104,7 @@ public final class AiAssessment implements Serializable {
                 supportingEvidence,
                 recommendedChecks,
                 insufficientEvidence,
+                providerUsed,
                 modelUsed,
                 System.currentTimeMillis());
     }
@@ -136,6 +151,10 @@ public final class AiAssessment implements Serializable {
 
     public boolean isInsufficientEvidence() {
         return insufficientEvidence;
+    }
+
+    public String getProviderUsed() {
+        return providerUsed;
     }
 
     public String getModelUsed() {

@@ -25,11 +25,14 @@ Before enabling AI analysis, understand what leaves your Jenkins controller:
   numbers, result, timestamps, duration, agent/node name, SCM changelog data (commit IDs,
   authors, messages, changed file paths) as reported by Jenkins' own APIs, and a *reduced,
   redacted* excerpt of the failed build's console log.
-- **AI analysis (opt-in, administrator-controlled):** the evidence bundle above is sent as a
-  JSON document to whatever OpenAI-compatible HTTP endpoint an administrator configures under
-  **Manage Jenkins → System → Build Change Investigator**. Nothing is sent anywhere until an
-  administrator both enables AI analysis *and* a user with the `RunChangeInvestigationAnalysis`
-  permission clicks "Run AI Analysis" on a specific build.
+- **AI analysis (opt-in, administrator-controlled):** the evidence bundle above is sent to
+  whichever AI provider an administrator configures under **Manage Jenkins → System → Build
+  Change Investigator** - one of the native providers (OpenAI, Anthropic Claude, AWS Bedrock,
+  Azure OpenAI, Google Gemini, Ollama) or a Generic OpenAI-compatible endpoint; see
+  [Supported AI providers](README.md#supported-ai-providers) for exactly what each one sends
+  and how. Nothing is sent anywhere until an administrator both enables AI analysis *and* a
+  user with the `RunChangeInvestigationAnalysis` permission clicks "Run AI Analysis" on a
+  specific build.
 
 ### What is deliberately never sent
 

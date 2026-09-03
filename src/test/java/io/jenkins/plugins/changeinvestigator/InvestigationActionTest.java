@@ -77,9 +77,9 @@ class InvestigationActionTest {
 
             ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();
             config.setAiEnabled(true);
-            config.setBaseUrl(mock.baseUrl());
-            config.setModel("test-model");
-            config.setCredentialsId("test-cred");
+            config.setProviderConfig(
+                    new io.jenkins.plugins.changeinvestigator.ai.provider.OpenAiCompatibleProviderConfig(
+                            mock.baseUrl(), "test-model", "test-cred"));
 
             FreeStyleBuild build = createFailedBuild(jenkins, "enabled-ai");
 

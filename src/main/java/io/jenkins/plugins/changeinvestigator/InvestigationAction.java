@@ -102,9 +102,14 @@ public class InvestigationAction implements RunAction2 {
         ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();
         if (!config.isAiEnabled()) {
             this.aiAssessment = AiAssessment.disabled();
+        } else if (config.getProviderConfig() == null) {
+            this.aiAssessment = AiAssessment.failed(
+                    "AI analysis is enabled but no AI provider is configured. Go to Manage Jenkins -> System "
+                            + "-> Build Change Investigator and select a provider.");
         } else {
             AiAnalysisService service = new AiAnalysisService(new ObjectMapper());
-            this.aiAssessment = service.analyze(evidence, config.toProviderConfig(), config.resolveApiToken());
+            this.aiAssessment = service.analyze(
+                    evidence, config.getProviderConfig(), config.getTimeoutSeconds(), config.getTemperature());
         }
 
         try {

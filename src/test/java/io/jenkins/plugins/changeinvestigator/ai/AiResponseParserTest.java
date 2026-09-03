@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 class AiResponseParserTest {
 
-    private final AiResponseParser parser = new AiResponseParser(new ObjectMapper(), "test-model");
+    private final AiResponseParser parser = new AiResponseParser(new ObjectMapper(), "Test Provider", "test-model");
 
     @Test
     void parsesWellFormedJson() throws AiAnalysisException {
@@ -32,6 +32,7 @@ class AiResponseParserTest {
         assertEquals(2, result.getSupportingEvidence().size());
         assertEquals(2, result.getRecommendedChecks().size());
         assertFalse(result.isInsufficientEvidence());
+        assertEquals("Test Provider", result.getProviderUsed());
         assertEquals("test-model", result.getModelUsed());
     }
 

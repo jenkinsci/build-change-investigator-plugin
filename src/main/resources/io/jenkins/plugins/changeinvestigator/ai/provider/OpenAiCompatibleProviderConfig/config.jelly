@@ -1,0 +1,16 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:c="/lib/credentials">
+  <f:entry title="Base URL" field="baseUrl"
+           description="OpenAI-compatible API base URL, e.g. https://openrouter.ai/api/v1 - &quot;/chat/completions&quot; is appended automatically.">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Model" field="model" description="Model name to request, exactly as your endpoint expects it.">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Credential" field="credentialsId"
+           description="A 'Secret text' credential containing the endpoint's API token. Optional - leave unset for a self-hosted endpoint that does not check authentication.">
+    <c:select/>
+  </f:entry>
+</j:jelly>

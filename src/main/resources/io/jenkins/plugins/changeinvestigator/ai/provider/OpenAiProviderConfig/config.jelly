@@ -1,0 +1,18 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:c="/lib/credentials">
+  <f:entry title="Model" field="model" description="Model name to request, e.g. gpt-4o-mini.">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Credential" field="credentialsId"
+           description="A 'Secret text' credential containing your OpenAI API key. Never logged or persisted outside Jenkins' credential store.">
+    <c:select/>
+  </f:entry>
+
+  <f:advanced>
+    <f:entry title="Base URL override" field="baseUrl"
+             description="Defaults to https://api.openai.com/v1 - override only for a private OpenAI network endpoint or routing layer.">
+      <f:textbox/>
+    </f:entry>
+  </f:advanced>
+</j:jelly>
