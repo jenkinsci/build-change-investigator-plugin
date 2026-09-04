@@ -9,4 +9,11 @@
            description="A 'Secret text' credential containing your Anthropic API key. Never logged or persisted outside Jenkins' credential store.">
     <c:select/>
   </f:entry>
+
+  <f:advanced>
+    <f:entry title="Base URL override" field="baseUrl"
+             description="Defaults to https://api.anthropic.com/v1 - override only for an enterprise gateway or private routing layer that speaks the native Anthropic Messages API shape.">
+      <f:textbox/>
+    </f:entry>
+  </f:advanced>
 </j:jelly>

@@ -207,11 +207,11 @@ real service (this repository's automated test suite never depends on a real ext
 | Provider | Status | Auth | Notes |
 |---|---|---|---|
 | OpenAI | Confirmed compatible | `Authorization: Bearer` via Jenkins credential | Native `/chat/completions`; base URL defaults to `https://api.openai.com/v1`, overridable in Advanced settings. |
-| Anthropic Claude | Confirmed compatible | `x-api-key` + `anthropic-version` header via Jenkins credential | Native Messages API (`/v1/messages`) - not routed through the OpenAI adapter, since the request/response shape and auth are genuinely different. |
-| AWS Bedrock | Confirmed compatible | Optional Jenkins `AWS Credentials`, else the AWS SDK's default credential chain (e.g. an IAM role on the controller/agent) | Native Bedrock Runtime `Converse` API, which normalizes across every model family Bedrock hosts. Requires the `bedrock:InvokeModel` IAM permission on the selected model/inference profile. |
+| Anthropic Claude | Confirmed compatible | `x-api-key` + `anthropic-version` header via Jenkins credential | Native Messages API (`/v1/messages`) - not routed through the OpenAI adapter, since the request/response shape and auth are genuinely different. Base URL defaults to `https://api.anthropic.com/v1`, overridable in Advanced settings for an enterprise gateway or private routing layer that still speaks the native Messages API shape. |
+| AWS Bedrock | Confirmed compatible | Optional Jenkins `AWS Credentials`, else the AWS SDK's default credential chain (e.g. an IAM role on the controller/agent) | Native Bedrock Runtime `Converse` API, which normalizes across every model family Bedrock hosts. Requires the `bedrock:InvokeModel` IAM permission on the selected model/inference profile (plus `sts:AssumeRole` on the target role if Role ARN is set - see [AWS Bedrock](#aws-bedrock) below). |
 | Azure OpenAI | Confirmed compatible | `api-key` header via Jenkins credential | Native, using Azure's classic dated-`api-version` REST surface (`/openai/deployments/{deployment}/chat/completions?api-version=...`) - the deployment name in the URL determines the model, not a request body field. |
-| Google Gemini | Confirmed compatible | `x-goog-api-key` header via Jenkins credential | Native `generateContent` REST API (`v1beta`). |
-| Ollama | Confirmed compatible | None required | Native convenience wrapper over the same OpenAI-compatible shape Ollama exposes (`{base URL}/chat/completions`); no credential is offered since Ollama does not check one. See the Ollama note below about "localhost" in containerized Jenkins. |
+| Google Gemini | Confirmed compatible | `x-goog-api-key` header via Jenkins credential | Native `generateContent` REST API (`v1beta`). Base URL defaults to `https://generativelanguage.googleapis.com`, overridable in Advanced settings for an enterprise proxy or private gateway. |
+| Ollama | Confirmed compatible | Optional Jenkins credential, sent as `Authorization: Bearer` only if configured | Native convenience wrapper over the same OpenAI-compatible shape Ollama exposes (`{base URL}/chat/completions`). Ollama itself never checks authentication, so the credential is only needed if you've put a reverse proxy in front of it that does. See the Ollama note below about "localhost" in containerized Jenkins. |
 | Generic OpenAI-compatible (OpenRouter, LiteLLM, vLLM, LM Studio, etc.) | Likely compatible | `Authorization: Bearer` via an *optional* Jenkins credential | Same catch-all as before: any endpoint accepting `POST {base URL}/chat/completions` in the OpenAI shape. Not a specific vendor's documented contract, so "likely" rather than "confirmed" for any individual gateway. |
 | Any other endpoint not listed above | Unverified | - | Use Generic OpenAI-compatible; works only if that endpoint actually follows the OpenAI request/response shape. |
 
@@ -242,15 +242,25 @@ real setups. Use `http://host.docker.internal:11434/v1` for Docker Desktop, or y
 host's actual LAN address/hostname otherwise. The same reasoning applies to vLLM or LM Studio
 configured through Generic OpenAI-compatible.
 
+The Credential field is optional: Ollama itself never checks authentication, so most setups
+leave it unset. It's only useful if Ollama sits behind a reverse proxy that requires a bearer
+token in front of it.
+
 ### AWS Bedrock
 
-The AWS credential is optional. Leave it unset to use the AWS SDK's standard credential chain -
-in practice, an IAM role attached to the Jenkins controller or agent, which is the common
-enterprise setup and keeps no static AWS key material in Jenkins at all. Set it to a Jenkins
-**AWS Credentials** credential (from the
-[AWS Credentials plugin](https://plugins.jenkins.io/aws-credentials/), installed automatically
-as a dependency) if you need to pin a specific access key instead. Either way, no raw AWS secret
-is ever pasted directly into this plugin's own configuration.
+| Field | Required | Description |
+|---|---|---|
+| Region | Yes | AWS region hosting the model/inference profile, e.g. `us-east-1`. |
+| Endpoint URL | No | Leave blank for normal AWS regional endpoint resolution. Set it to route through a VPC endpoint, a private network path, or (in tests) a local double. |
+| Role ARN | No | Leave blank to call Bedrock directly with the credential below (or the default chain). Set it to a full IAM role ARN (`arn:aws:iam::123456789012:role/my-role`) to assume that role via AWS STS first - the credential below (or the default chain) is used only as the source identity for `sts:AssumeRole`; the actual Bedrock calls use the resulting temporary, automatically-refreshed session credentials. |
+| Model / inference profile ID | Yes | e.g. `anthropic.claude-sonnet-4-5` or an inference profile ARN/ID. |
+| Credential | No | A Jenkins **AWS Credentials** credential (from the [AWS Credentials plugin](https://plugins.jenkins.io/aws-credentials/), installed automatically as a dependency). Leave unset to use the AWS SDK's standard default credential chain - in practice, an IAM role attached to the Jenkins controller or agent, which is the common enterprise setup and keeps no static AWS key material in Jenkins at all. |
+
+Either way, no raw AWS secret is ever pasted directly into this plugin's own configuration. When
+Role ARN is set, the temporary STS session credentials live only in memory for the duration of a
+single call - never serialized, logged, or persisted - and the IAM identity making the
+`AssumeRole` call needs `sts:AssumeRole` permission on the target role in addition to the usual
+`bedrock:InvokeModel` permission.
 
 ## Configuration
 

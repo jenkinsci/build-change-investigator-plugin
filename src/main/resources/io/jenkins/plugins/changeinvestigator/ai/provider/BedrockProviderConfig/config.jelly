@@ -4,19 +4,30 @@
     <f:textbox/>
   </f:entry>
 
+  <f:entry title="Endpoint URL" field="endpointUrl"
+           description="Optional - normally left blank. Overrides Bedrock's normal regional endpoint, e.g. for a VPC/private endpoint or a test double. Leave blank to use standard AWS endpoint resolution for the selected region.">
+    <f:textbox/>
+  </f:entry>
+
+  <f:entry title="Role ARN" field="roleArn"
+           description="Optional - normally left blank. When set, the selected credential (or the default AWS credential chain, if none is selected) is used only as the source identity to assume this IAM role via AWS STS; the resulting temporary credentials are then used for Bedrock calls. e.g. arn:aws:iam::123456789012:role/my-role-name.">
+    <f:textbox/>
+  </f:entry>
+
   <f:entry title="Model / inference profile ID" field="model"
            description="e.g. us.anthropic.claude-sonnet-4-5-20250929-v1:0 - a base model ID or a cross-region inference profile ID, as required by your chosen model.">
     <f:textbox/>
   </f:entry>
 
   <f:entry title="Credential" field="credentialsId"
-           description="An 'AWS Credentials' credential (access key + secret key). Optional - leave unset to use the AWS SDK's default credential chain, e.g. an IAM role attached to the Jenkins controller or agent.">
+           description="Optional. Select an AWS credential, or leave unset to use the AWS SDK default credential chain, such as an IAM role attached to the Jenkins controller.">
     <c:select/>
   </f:entry>
 
   <f:block>
     <div class="jenkins-!-color-secondary">
-      Requires the bedrock:InvokeModel IAM permission on the selected model/inference profile.
+      Requires the bedrock:InvokeModel IAM permission on the selected model/inference profile
+      (and sts:AssumeRole on the target role, if Role ARN is set).
     </div>
   </f:block>
 </j:jelly>

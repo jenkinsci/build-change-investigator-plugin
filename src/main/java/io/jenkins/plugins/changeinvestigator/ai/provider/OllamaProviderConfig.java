@@ -1,18 +1,28 @@
 package io.jenkins.plugins.changeinvestigator.ai.provider;
 
+import com.cloudbees.plugins.credentials.CredentialsMatchers;
+import com.cloudbees.plugins.credentials.CredentialsProvider;
+import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import hudson.Extension;
+import hudson.security.ACL;
 import hudson.util.FormValidation;
+import hudson.util.ListBoxModel;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
+import java.util.List;
 import jenkins.model.Jenkins;
+import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.verb.POST;
 
 /**
  * A local (or self-hosted) Ollama instance, via its OpenAI-compatibility layer
- * ({@code {baseUrl}/chat/completions}). No Jenkins credential is required or offered - Ollama
- * does not check the {@code Authorization} header at all, so requiring one here would only add
- * friction with no security benefit.
+ * ({@code {baseUrl}/chat/completions}). No Jenkins credential is required - Ollama itself does
+ * not check the {@code Authorization} header - but one may optionally be selected for a
+ * reverse-proxied Ollama setup that adds its own auth in front, in which case it is sent as a
+ * Bearer token exactly like every other OpenAI-compatible provider in this plugin.
  *
  * <p>There is deliberately no hardcoded default of {@code http://localhost:11434/v1}: on a
  * containerized Jenkins controller or agent, "localhost" inside the container is <b>not</b> the
@@ -29,6 +39,7 @@ public class OllamaProviderConfig extends AiProviderConfig {
 
     private final String baseUrl;
     private final String model;
+    private String credentialsId;
 
     @DataBoundConstructor
     public OllamaProviderConfig(String baseUrl, String model) {
@@ -45,9 +56,31 @@ public class OllamaProviderConfig extends AiProviderConfig {
         return model;
     }
 
+    public String getCredentialsId() {
+        return credentialsId;
+    }
+
+    @DataBoundSetter
+    public void setCredentialsId(String credentialsId) {
+        this.credentialsId = credentialsId;
+    }
+
     @Override
     public AiProvider createProvider(ObjectMapper objectMapper, int timeoutSeconds) {
-        return new OpenAiChatCompletionsProvider("Ollama", baseUrl, model, null, timeoutSeconds, objectMapper);
+        return new OpenAiChatCompletionsProvider(
+                "Ollama", baseUrl, model, resolveApiToken(), timeoutSeconds, objectMapper);
+    }
+
+    /** See {@link OpenAiProviderConfig#resolveApiToken()} - identical guarantee, no secret retained. Optional here: {@code null}/blank means no Authorization header is sent, matching Ollama's own no-auth-required behavior. */
+    String resolveApiToken() {
+        if (credentialsId == null || credentialsId.isBlank()) {
+            return null;
+        }
+        StringCredentials credentials = CredentialsMatchers.firstOrNull(
+                CredentialsProvider.lookupCredentialsInItemGroup(
+                        StringCredentials.class, Jenkins.get(), ACL.SYSTEM2, List.of()),
+                CredentialsMatchers.withId(credentialsId));
+        return credentials == null ? null : credentials.getSecret().getPlainText();
     }
 
     @Extension
@@ -55,6 +88,17 @@ public class OllamaProviderConfig extends AiProviderConfig {
         @Override
         public String getDisplayName() {
             return "Ollama";
+        }
+
+        @POST
+        public ListBoxModel doFillCredentialsIdItems(@QueryParameter String credentialsId) {
+            Jenkins jenkins = Jenkins.get();
+            jenkins.checkPermission(Jenkins.ADMINISTER);
+            return new StandardListBoxModel()
+                    .includeEmptyValue()
+                    .includeMatchingAs(
+                            ACL.SYSTEM2, jenkins, StringCredentials.class, List.of(), CredentialsMatchers.always())
+                    .includeCurrentValue(credentialsId);
         }
 
         // Read-only; same GET-style-with-permission-fallback pattern as the plugin's other

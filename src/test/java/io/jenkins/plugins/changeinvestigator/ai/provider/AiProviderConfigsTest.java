@@ -115,6 +115,12 @@ class AiProviderConfigsTest {
         assertNull(config.resolveApiKey());
     }
 
+    @Test
+    void anthropicBaseUrlDefaultsToNullUntilExplicitlySet() {
+        AnthropicProviderConfig config = new AnthropicProviderConfig("claude-sonnet-5", null);
+        assertNull(config.getBaseUrl(), "field itself stays null - AnthropicProvider applies the real default");
+    }
+
     // --- Azure OpenAI: deployment name doubles as the displayed "model", api-version defaults ---
 
     @Test
@@ -140,7 +146,13 @@ class AiProviderConfigsTest {
         assertEquals(GeminiProviderConfig.DEFAULT_MODEL, config.getModel());
     }
 
-    // --- Ollama: no credential concept at all ---
+    @Test
+    void geminiBaseUrlDefaultsToNullUntilExplicitlySet() {
+        GeminiProviderConfig config = new GeminiProviderConfig(null, "cred");
+        assertNull(config.getBaseUrl(), "field itself stays null - GeminiProvider applies the real default");
+    }
+
+    // --- Ollama: credential is optional, sent as a Bearer token only when configured ---
 
     @Test
     void ollamaUsesDefaultModelWhenBlank() {
@@ -149,13 +161,56 @@ class AiProviderConfigsTest {
     }
 
     @Test
-    void ollamaProviderNeverSendsAnAuthorizationHeader() throws Exception {
+    void ollamaProviderNeverSendsAnAuthorizationHeaderWhenNoCredentialConfigured() throws Exception {
         try (var mock = io.jenkins.plugins.changeinvestigator.testutil.MockAiServer.start(
                 "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}")) {
             OllamaProviderConfig config = new OllamaProviderConfig(mock.baseUrl(), "llama3.1");
             AiProvider provider = config.createProvider(objectMapper, 10);
             provider.chatCompletion(new io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest("s", "u", 0.2));
             assertNull(mock.lastAuthorizationHeader);
+        }
+    }
+
+    @Test
+    void ollamaResolvesNullTokenWhenNoCredentialConfigured(JenkinsRule jenkins) {
+        OllamaProviderConfig config = new OllamaProviderConfig("http://host.docker.internal:11434/v1", "llama3.1");
+        assertNull(
+                config.resolveApiToken(),
+                "no credential configured, so no token should resolve - and this must not throw");
+    }
+
+    @Test
+    void ollamaResolvesConfiguredCredential(JenkinsRule jenkins) throws Exception {
+        String secretValue = "s3cr3t-ollama-proxy-token";
+        StringCredentialsImpl credentials = new StringCredentialsImpl(
+                CredentialsScope.GLOBAL, "my-ollama-cred", "d", Secret.fromString(secretValue));
+        CredentialsProvider.lookupStores(jenkins.jenkins)
+                .iterator()
+                .next()
+                .addCredentials(Domain.global(), credentials);
+
+        OllamaProviderConfig config = new OllamaProviderConfig("http://host.docker.internal:11434/v1", "llama3.1");
+        config.setCredentialsId("my-ollama-cred");
+        assertEquals(secretValue, config.resolveApiToken());
+    }
+
+    @Test
+    void ollamaSendsConfiguredCredentialAsBearerToken(JenkinsRule jenkins) throws Exception {
+        String secretValue = "s3cr3t-ollama-proxy-token";
+        StringCredentialsImpl credentials = new StringCredentialsImpl(
+                CredentialsScope.GLOBAL, "my-ollama-cred", "d", Secret.fromString(secretValue));
+        CredentialsProvider.lookupStores(jenkins.jenkins)
+                .iterator()
+                .next()
+                .addCredentials(Domain.global(), credentials);
+
+        try (var mock = io.jenkins.plugins.changeinvestigator.testutil.MockAiServer.start(
+                "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}")) {
+            OllamaProviderConfig config = new OllamaProviderConfig(mock.baseUrl(), "llama3.1");
+            config.setCredentialsId("my-ollama-cred");
+            AiProvider provider = config.createProvider(objectMapper, 10);
+            provider.chatCompletion(new io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest("s", "u", 0.2));
+            assertEquals("Bearer " + secretValue, mock.lastAuthorizationHeader);
         }
     }
 
@@ -196,5 +251,24 @@ class AiProviderConfigsTest {
         BedrockProviderConfig config = new BedrockProviderConfig("us-east-1", "m");
         assertNull(config.getCredentialsId());
         assertTrue(true); // region/model constructor-required, credential optional via setter - documented behavior
+    }
+
+    @Test
+    void bedrockEndpointUrlAndRoleArnDefaultToNull() {
+        // Both optional/additive fields: blank/unset must mean "normal AWS regional endpoint
+        // resolution" and "use the credential/default chain directly", matching the pre-existing
+        // saved-config behavior for every Bedrock config that predates these two fields.
+        BedrockProviderConfig config = new BedrockProviderConfig("us-east-1", "m");
+        assertNull(config.getEndpointUrl());
+        assertNull(config.getRoleArn());
+    }
+
+    @Test
+    void bedrockEndpointUrlAndRoleArnAreSettable() {
+        BedrockProviderConfig config = new BedrockProviderConfig("us-east-1", "m");
+        config.setEndpointUrl("https://vpce-example.bedrock-runtime.us-east-1.vpce.amazonaws.com");
+        config.setRoleArn("arn:aws:iam::123456789012:role/my-role");
+        assertEquals("https://vpce-example.bedrock-runtime.us-east-1.vpce.amazonaws.com", config.getEndpointUrl());
+        assertEquals("arn:aws:iam::123456789012:role/my-role", config.getRoleArn());
     }
 }
