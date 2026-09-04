@@ -8,4 +8,11 @@
            description="A 'Secret text' credential containing your Gemini API key. Never logged or persisted outside Jenkins' credential store.">
     <c:select/>
   </f:entry>
+
+  <f:advanced>
+    <f:entry title="Base URL override" field="baseUrl"
+             description="Defaults to https://generativelanguage.googleapis.com - override only for an enterprise proxy or private gateway.">
+      <f:textbox/>
+    </f:entry>
+  </f:advanced>
 </j:jelly>

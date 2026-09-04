@@ -19,25 +19,26 @@ import java.util.Map;
  */
 final class GeminiProvider implements AiProvider {
 
-    private static final String DEFAULT_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
+    static final String DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
 
     private final String model;
     private final String apiKey;
     private final int timeoutSeconds;
     private final ObjectMapper objectMapper;
-    private final String apiBase;
+    private final String baseUrl;
 
-    GeminiProvider(String model, String apiKey, int timeoutSeconds, ObjectMapper objectMapper) {
-        this(model, apiKey, timeoutSeconds, objectMapper, DEFAULT_API_BASE);
-    }
-
-    /** Test-only overload: overrides the API base so unit tests can point at a local mock server instead of the real Gemini API. */
-    GeminiProvider(String model, String apiKey, int timeoutSeconds, ObjectMapper objectMapper, String apiBase) {
+    /**
+     * @param baseUrl e.g. {@code https://generativelanguage.googleapis.com} -
+     *     "/v1beta/models/{model}:generateContent" is appended automatically. {@code null}/blank
+     *     uses {@link #DEFAULT_BASE_URL}; overriding it is an escape hatch for an enterprise
+     *     proxy or private gateway, not something most users need to touch.
+     */
+    GeminiProvider(String model, String apiKey, int timeoutSeconds, ObjectMapper objectMapper, String baseUrl) {
         this.model = model;
         this.apiKey = apiKey;
         this.timeoutSeconds = timeoutSeconds;
         this.objectMapper = objectMapper;
-        this.apiBase = apiBase;
+        this.baseUrl = (baseUrl == null || baseUrl.isBlank()) ? DEFAULT_BASE_URL : baseUrl;
     }
 
     @Override
@@ -51,7 +52,7 @@ final class GeminiProvider implements AiProvider {
                     AiAnalysisException.Kind.CONFIGURATION_INVALID, "No model is configured for Gemini.");
         }
 
-        String url = apiBase + model + ":generateContent";
+        String url = stripTrailingSlash(baseUrl) + "/v1beta/models/" + model + ":generateContent";
         String requestBody = buildRequestBody(request);
         Map<String, String> headers = Map.of("Content-Type", "application/json", "x-goog-api-key", apiKey);
 
@@ -99,5 +100,9 @@ final class GeminiProvider implements AiProvider {
                     "Gemini's response did not contain candidates[0].content.parts[0].text.");
         }
         return text.asText();
+    }
+
+    private static String stripTrailingSlash(String s) {
+        return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
     }
 }

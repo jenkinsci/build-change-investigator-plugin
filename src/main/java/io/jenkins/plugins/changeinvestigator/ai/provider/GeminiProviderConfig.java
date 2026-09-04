@@ -12,6 +12,7 @@ import java.util.List;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.verb.POST;
 
@@ -24,6 +25,7 @@ public class GeminiProviderConfig extends AiProviderConfig {
 
     private final String model;
     private final String credentialsId;
+    private String baseUrl;
 
     @DataBoundConstructor
     public GeminiProviderConfig(String model, String credentialsId) {
@@ -40,9 +42,18 @@ public class GeminiProviderConfig extends AiProviderConfig {
         return credentialsId;
     }
 
+    public String getBaseUrl() {
+        return baseUrl;
+    }
+
+    @DataBoundSetter
+    public void setBaseUrl(String baseUrl) {
+        this.baseUrl = baseUrl;
+    }
+
     @Override
     public AiProvider createProvider(ObjectMapper objectMapper, int timeoutSeconds) {
-        return new GeminiProvider(model, resolveApiKey(), timeoutSeconds, objectMapper);
+        return new GeminiProvider(model, resolveApiKey(), timeoutSeconds, objectMapper, baseUrl);
     }
 
     /** See {@link OpenAiProviderConfig#resolveApiToken()} - identical guarantee, no secret retained. */

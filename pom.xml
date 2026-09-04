@@ -60,7 +60,7 @@
          default apache5-client/netty-nio-client transports (unused - BedrockProvider always
          supplies its own url-connection-client) and aws-credentials' own unrelated transitive
          EC2 SDK trees (unused - only AmazonWebServicesCredentials#resolveCredentials is called). -->
-    <hpi.bundledArtifacts>annotations,auth,aws-core,aws-json-protocol,bedrockruntime,checksums,checksums-spi,endpoints-spi,eventstream,http-auth,http-auth-aws,http-auth-aws-eventstream,http-auth-spi,http-client-spi,identity-spi,json-utils,metrics-spi,profiles,protocol-core,reactive-streams,regions,retries,retries-spi,sdk-core,slf4j-api,third-party-jackson-core,url-connection-client,utils,utils-lite</hpi.bundledArtifacts>
+    <hpi.bundledArtifacts>annotations,auth,aws-core,aws-json-protocol,aws-query-protocol,bedrockruntime,checksums,checksums-spi,endpoints-spi,eventstream,http-auth,http-auth-aws,http-auth-aws-eventstream,http-auth-spi,http-client-spi,identity-spi,json-utils,metrics-spi,profiles,protocol-core,reactive-streams,regions,retries,retries-spi,sdk-core,slf4j-api,sts,third-party-jackson-core,url-connection-client,utils,utils-lite</hpi.bundledArtifacts>
   </properties>
 
   <dependencyManagement>
@@ -143,6 +143,26 @@
     <dependency>
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>bedrockruntime</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>apache5-client</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>netty-nio-client</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <!-- AWS STS AssumeRole support for Bedrock's optional Role ARN field (BedrockProvider) -
+         StsAssumeRoleCredentialsProvider only, never a hand-signed request. Same excluded
+         default transport as bedrockruntime above; sts shares the rest of its transitive
+         closure (sdk-core, auth, regions, ...) with bedrockruntime already, at the identical
+         BOM-managed version, so the net size impact is just the sts module itself plus its own
+         XML/query-protocol modules - see the dependency-size report for the measured delta. -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>sts</artifactId>
       <exclusions>
         <exclusion>
           <groupId>software.amazon.awssdk</groupId>

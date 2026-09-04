@@ -42,6 +42,11 @@ Before enabling AI analysis, understand what leaves your Jenkins controller:
 - Workspace file contents (only SCM-reported *paths* of changed files, never file contents).
 - The AI provider's own API token is never logged, echoed back in any UI, or persisted outside
   Jenkins' credential store.
+- For AWS Bedrock with a Role ARN configured: the temporary AWS STS session credentials obtained
+  via `AssumeRole` (access key, secret key, session token) are held only in memory for the
+  duration of a single Bedrock call, obtained exclusively through the AWS SDK's own
+  `StsAssumeRoleCredentialsProvider` (never hand-signed or hand-parsed by this plugin) - never
+  serialized, logged, or persisted anywhere, including in `config.xml`.
 
 ### Secret redaction is best-effort, not a guarantee
 

@@ -40,6 +40,23 @@ class ChangeInvestigatorGlobalConfigurationTest {
         assertEquals(1234, reloaded.getMaxLogContextChars());
     }
 
+    /**
+     * Regression guard for a bug where the "AI Provider" label was rendered twice: an outer
+     * {@code f:entry title="AI Provider"} wrapped an {@code f:dropdownDescriptorSelector} that
+     * already renders its own titled row. Counts the label text in the raw form markup rather
+     * than a specific CSS selector, so it stays meaningful even if Jenkins core changes exactly
+     * how {@code f:entry}/{@code f:dropdownDescriptorSelector} render their row markup.
+     */
+    @Test
+    void aiProviderLabelAppearsExactlyOnce(JenkinsRule jenkins) throws Exception {
+        JenkinsRule.WebClient wc = jenkins.createWebClient();
+        org.htmlunit.html.HtmlPage page = wc.goTo("configure");
+        String formHtml = page.getFormByName("config").asXml();
+
+        int occurrences = formHtml.split("AI Provider", -1).length - 1;
+        assertEquals(1, occurrences, "\"AI Provider\" label must appear exactly once in the config form");
+    }
+
     @Test
     void settingsSurviveAFreshLoadFromDisk(JenkinsRule jenkins) {
         ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();

@@ -43,6 +43,16 @@ class AnthropicProviderTest {
     }
 
     @Test
+    void blankOrNullBaseUrlFallsBackToTheDefaultAnthropicApiConstant() {
+        // Construction with a blank/null override must not throw, and must resolve to the real
+        // default rather than an empty/broken URL - verified directly against the constant
+        // rather than by making a live call to the real Anthropic API.
+        assertEquals("https://api.anthropic.com/v1", AnthropicProvider.DEFAULT_BASE_URL);
+        new AnthropicProvider("claude-sonnet-5", "token", 5, objectMapper, null);
+        new AnthropicProvider("claude-sonnet-5", "token", 5, objectMapper, "  ");
+    }
+
+    @Test
     void concatenatesMultipleTextContentBlocks() throws Exception {
         try (MockAiServer mock = MockAiServer.start(
                 "{\"content\":[{\"type\":\"text\",\"text\":\"part1 \"},{\"type\":\"text\",\"text\":\"part2\"}]}")) {
@@ -63,7 +73,7 @@ class AnthropicProviderTest {
 
     @Test
     void throwsCredentialsMissingWhenApiKeyAbsent() {
-        var provider = new AnthropicProvider("claude-sonnet-5", null, 5, objectMapper);
+        var provider = new AnthropicProvider("claude-sonnet-5", null, 5, objectMapper, null);
         AiAnalysisException ex = assertThrows(
                 AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
         assertEquals(AiAnalysisException.Kind.CREDENTIALS_MISSING, ex.getKind());
@@ -71,7 +81,7 @@ class AnthropicProviderTest {
 
     @Test
     void throwsConfigurationInvalidWhenModelMissing() {
-        var provider = new AnthropicProvider(null, "token", 5, objectMapper);
+        var provider = new AnthropicProvider(null, "token", 5, objectMapper, null);
         AiAnalysisException ex = assertThrows(
                 AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
         assertEquals(AiAnalysisException.Kind.CONFIGURATION_INVALID, ex.getKind());

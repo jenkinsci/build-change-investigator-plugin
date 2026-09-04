@@ -4,9 +4,7 @@
     <f:optionalBlock name="aiEnabled" field="aiEnabled" inline="true"
                       title="Enable AI analysis of investigations">
 
-      <f:entry title="AI Provider" field="providerConfig">
-        <f:dropdownDescriptorSelector field="providerConfig" title="AI Provider"/>
-      </f:entry>
+      <f:dropdownDescriptorSelector field="providerConfig" title="AI Provider"/>
 
       <f:entry title="">
         <f:validateButton title="Test Connection" progress="Testing..." method="testConnection" with=""/>

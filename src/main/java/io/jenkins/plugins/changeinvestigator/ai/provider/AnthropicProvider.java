@@ -25,25 +25,26 @@ final class AnthropicProvider implements AiProvider {
 
     static final String API_VERSION = "2023-06-01";
     static final int DEFAULT_MAX_TOKENS = 8192;
-    private static final String DEFAULT_ENDPOINT = "https://api.anthropic.com/v1/messages";
+    static final String DEFAULT_BASE_URL = "https://api.anthropic.com/v1";
 
     private final String model;
     private final String apiKey;
     private final int timeoutSeconds;
     private final ObjectMapper objectMapper;
-    private final String endpoint;
+    private final String baseUrl;
 
-    AnthropicProvider(String model, String apiKey, int timeoutSeconds, ObjectMapper objectMapper) {
-        this(model, apiKey, timeoutSeconds, objectMapper, DEFAULT_ENDPOINT);
-    }
-
-    /** Test-only overload: overrides the endpoint so unit tests can point at a local mock server instead of the real Anthropic API. */
-    AnthropicProvider(String model, String apiKey, int timeoutSeconds, ObjectMapper objectMapper, String endpoint) {
+    /**
+     * @param baseUrl e.g. {@code https://api.anthropic.com/v1} - "/messages" is appended
+     *     automatically. {@code null}/blank uses {@link #DEFAULT_BASE_URL}; overriding it is an
+     *     escape hatch for an enterprise gateway or private routing layer that speaks the native
+     *     Anthropic Messages API shape, not something most users need to touch.
+     */
+    AnthropicProvider(String model, String apiKey, int timeoutSeconds, ObjectMapper objectMapper, String baseUrl) {
         this.model = model;
         this.apiKey = apiKey;
         this.timeoutSeconds = timeoutSeconds;
         this.objectMapper = objectMapper;
-        this.endpoint = endpoint;
+        this.baseUrl = (baseUrl == null || baseUrl.isBlank()) ? DEFAULT_BASE_URL : baseUrl;
     }
 
     @Override
@@ -63,8 +64,9 @@ final class AnthropicProvider implements AiProvider {
                 "x-api-key", apiKey,
                 "anthropic-version", API_VERSION);
 
+        String url = stripTrailingSlash(baseUrl) + "/messages";
         Duration timeout = Duration.ofSeconds(Math.max(1, timeoutSeconds));
-        String responseBody = HttpAiClientSupport.post("Anthropic", endpoint, headers, requestBody, timeout);
+        String responseBody = HttpAiClientSupport.post("Anthropic", url, headers, requestBody, timeout);
         return new AiAnalysisResult(extractText(responseBody), "Anthropic", model);
     }
 
@@ -114,5 +116,9 @@ final class AnthropicProvider implements AiProvider {
                     "Anthropic's response contained no text content block.");
         }
         return text.toString();
+    }
+
+    private static String stripTrailingSlash(String s) {
+        return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
     }
 }

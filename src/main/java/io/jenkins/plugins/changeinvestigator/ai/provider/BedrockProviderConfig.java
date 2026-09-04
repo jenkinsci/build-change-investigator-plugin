@@ -11,6 +11,7 @@ import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
 import java.util.List;
+import java.util.regex.Pattern;
 import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
@@ -27,15 +28,21 @@ import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
  * other secret in this plugin already is); when left unset, calls fall back to the AWS SDK's
  * default credential provider chain, which is how most enterprise Bedrock setups actually work
  * - an IAM role attached to the Jenkins controller or agent, with no static key material
- * anywhere.
+ * anywhere. An optional Role ARN layers AWS STS {@code AssumeRole} on top of either credential
+ * source - see {@link BedrockProvider} for how that's wired without ever hand-signing anything.
  */
 public class BedrockProviderConfig extends AiProviderConfig {
 
     private static final long serialVersionUID = 1L;
 
+    /** e.g. arn:aws:iam::123456789012:role/my-role, arn:aws-us-gov:iam::..., arn:aws-cn:iam::... */
+    private static final Pattern ROLE_ARN_PATTERN = Pattern.compile("^arn:aws[a-zA-Z-]*:iam::\\d{12}:role/.+$");
+
     private final String region;
     private final String model;
     private String credentialsId;
+    private String endpointUrl;
+    private String roleArn;
 
     @DataBoundConstructor
     public BedrockProviderConfig(String region, String model) {
@@ -61,9 +68,27 @@ public class BedrockProviderConfig extends AiProviderConfig {
         this.credentialsId = credentialsId;
     }
 
+    public String getEndpointUrl() {
+        return endpointUrl;
+    }
+
+    @DataBoundSetter
+    public void setEndpointUrl(String endpointUrl) {
+        this.endpointUrl = endpointUrl;
+    }
+
+    public String getRoleArn() {
+        return roleArn;
+    }
+
+    @DataBoundSetter
+    public void setRoleArn(String roleArn) {
+        this.roleArn = roleArn;
+    }
+
     @Override
     public AiProvider createProvider(ObjectMapper objectMapper, int timeoutSeconds) {
-        return new BedrockProvider(region, model, resolveCredentialsProvider(), timeoutSeconds);
+        return new BedrockProvider(region, model, resolveCredentialsProvider(), timeoutSeconds, endpointUrl, roleArn);
     }
 
     /**
@@ -71,7 +96,9 @@ public class BedrockProviderConfig extends AiProviderConfig {
      * {@code null} to signal "use the SDK's default credential chain" to {@link BedrockProvider}.
      * Never retains the resolved credential itself - only a provider that resolves it lazily at
      * call time, matching the just-in-time resolution pattern used by every other provider
-     * config in this package.
+     * config in this package. If {@link #roleArn} is also set, {@link BedrockProvider} uses
+     * whatever this returns (or the default chain) only as the source identity for
+     * {@code AssumeRole} - the actual Bedrock calls use the resulting temporary credentials.
      */
     AwsCredentialsProvider resolveCredentialsProvider() {
         if (credentialsId == null || credentialsId.isBlank()) {
@@ -117,6 +144,35 @@ public class BedrockProviderConfig extends AiProviderConfig {
             return (value == null || value.isBlank())
                     ? FormValidation.error("Region is required, e.g. us-east-1.")
                     : FormValidation.ok();
+        }
+
+        /** Optional - blank means "use normal AWS regional endpoint resolution", so blank is valid here. */
+        @SuppressWarnings("lgtm[jenkins/csrf]")
+        public FormValidation doCheckEndpointUrl(@QueryParameter String value) {
+            if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
+                return FormValidation.ok();
+            }
+            if (value == null || value.isBlank()) {
+                return FormValidation.ok();
+            }
+            return (value.startsWith("http://") || value.startsWith("https://"))
+                    ? FormValidation.ok()
+                    : FormValidation.error("Must be a full URL starting with http:// or https://.");
+        }
+
+        /** Optional - blank means "use the selected credential / default chain directly", so blank is valid here. */
+        @SuppressWarnings("lgtm[jenkins/csrf]")
+        public FormValidation doCheckRoleArn(@QueryParameter String value) {
+            if (!Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
+                return FormValidation.ok();
+            }
+            if (value == null || value.isBlank()) {
+                return FormValidation.ok();
+            }
+            return ROLE_ARN_PATTERN.matcher(value).matches()
+                    ? FormValidation.ok()
+                    : FormValidation.error(
+                            "Must be a full IAM role ARN, e.g. arn:aws:iam::123456789012:role/my-role-name.");
         }
     }
 }
