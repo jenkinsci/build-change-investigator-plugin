@@ -7,7 +7,10 @@ import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisResult;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -59,14 +62,56 @@ final class AzureOpenAiProvider implements AiProvider {
                     "Azure OpenAI requires both an endpoint and a deployment name.");
         }
 
-        String url = stripTrailingSlash(endpoint) + "/openai/deployments/" + deploymentName
+        String url = stripTrailingSlash(endpoint) + "/openai/deployments/" + encodePathSegment(deploymentName)
                 + "/chat/completions?api-version=" + apiVersion;
         String requestBody = buildRequestBody(request);
         Map<String, String> headers = Map.of("Content-Type", "application/json", "api-key", apiKey);
 
         Duration timeout = Duration.ofSeconds(Math.max(1, timeoutSeconds));
-        String responseBody = HttpAiClientSupport.post("Azure OpenAI", url, headers, requestBody, timeout);
+        String responseBody;
+        try {
+            responseBody = HttpAiClientSupport.post("Azure OpenAI", url, headers, requestBody, timeout);
+        } catch (AiAnalysisException e) {
+            throw refineKind(e);
+        }
         return new AiAnalysisResult(extractContent(responseBody), "Azure OpenAI", deploymentName);
+    }
+
+    /**
+     * A deployment name can legitimately contain characters (spaces, etc.) that are not valid
+     * unencoded in a URL path segment; encoding it here means a deployment name the administrator
+     * actually configured on Azure is never silently mangled into a different, invalid, or
+     * unintended URL. {@link URLEncoder} is form (application/x-www-form-urlencoded) encoding, so
+     * its space-as-"+" is translated to the correct path-segment escape, "%20".
+     */
+    private static String encodePathSegment(String segment) {
+        return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    /**
+     * {@link HttpAiClientSupport} can only classify by HTTP status, but Azure's error body
+     * distinguishes two very different HTTP-404 situations that a bare status code cannot: a
+     * genuinely missing/misspelled deployment (Azure's own {@code DeploymentNotFound} error code)
+     * versus every other kind of 404 (e.g. a wrong path entirely). It also mirrors OpenAI's
+     * chat-completions error shape closely enough to carry the same rate-limit-vs-quota
+     * ambiguity under HTTP 429 - see {@link OpenAiChatCompletionsProvider#chatCompletion} for the
+     * same reasoning applied there.
+     */
+    private static AiAnalysisException refineKind(AiAnalysisException e) {
+        if (e.getMessage() == null) {
+            return e;
+        }
+        String lower = e.getMessage().toLowerCase(Locale.ROOT);
+        if (e.getKind() == AiAnalysisException.Kind.MODEL_NOT_FOUND && lower.contains("deploymentnotfound")) {
+            return new AiAnalysisException(AiAnalysisException.Kind.DEPLOYMENT_NOT_FOUND, e.getMessage(), e);
+        }
+        if (e.getKind() == AiAnalysisException.Kind.RATE_LIMITED
+                && (lower.contains("insufficient_quota")
+                        || lower.contains("insufficient quota")
+                        || (lower.contains("quota") && lower.contains("billing")))) {
+            return new AiAnalysisException(AiAnalysisException.Kind.QUOTA_EXCEEDED, e.getMessage(), e);
+        }
+        return e;
     }
 
     private String buildRequestBody(AiAnalysisRequest request) {

@@ -8,6 +8,7 @@ import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisResult;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -57,8 +58,45 @@ final class GeminiProvider implements AiProvider {
         Map<String, String> headers = Map.of("Content-Type", "application/json", "x-goog-api-key", apiKey);
 
         Duration timeout = Duration.ofSeconds(Math.max(1, timeoutSeconds));
-        String responseBody = HttpAiClientSupport.post("Gemini", url, headers, requestBody, timeout);
+        String responseBody;
+        try {
+            responseBody = HttpAiClientSupport.post("Gemini", url, headers, requestBody, timeout);
+        } catch (AiAnalysisException e) {
+            throw refineKind(e);
+        }
         return new AiAnalysisResult(extractText(responseBody), "Google Gemini", model);
+    }
+
+    /**
+     * {@link HttpAiClientSupport} can only classify by HTTP status, but Gemini's own error body
+     * carries information the status code alone does not:
+     *
+     * <ul>
+     *   <li>Google's Generative Language API rejects an invalid/missing API key with HTTP 400
+     *       {@code INVALID_ARGUMENT} ("API key not valid...") rather than a conventional HTTP
+     *       401, so the shared status-based mapping would otherwise leave this as the generic
+     *       {@code HTTP_ERROR} instead of the far more actionable {@code AUTHENTICATION_FAILED}.
+     *   <li>HTTP 429 {@code RESOURCE_EXHAUSTED} covers both a transient rate limit and an
+     *       account/project that is genuinely out of quota; when the message itself calls out
+     *       quota/billing/plan we re-classify to the more actionable {@code QUOTA_EXCEEDED} -
+     *       best-effort, since Google does not always distinguish the two in the message text.
+     * </ul>
+     */
+    private static AiAnalysisException refineKind(AiAnalysisException e) {
+        if (e.getMessage() == null) {
+            return e;
+        }
+        String lower = e.getMessage().toLowerCase(Locale.ROOT);
+        if (e.getKind() == AiAnalysisException.Kind.HTTP_ERROR
+                && (lower.contains("api key not valid") || lower.contains("api_key_invalid"))) {
+            return new AiAnalysisException(AiAnalysisException.Kind.AUTHENTICATION_FAILED, e.getMessage(), e);
+        }
+        if (e.getKind() == AiAnalysisException.Kind.RATE_LIMITED
+                && lower.contains("quota")
+                && (lower.contains("billing") || lower.contains("plan"))) {
+            return new AiAnalysisException(AiAnalysisException.Kind.QUOTA_EXCEEDED, e.getMessage(), e);
+        }
+        return e;
     }
 
     private String buildRequestBody(AiAnalysisRequest request) {
@@ -88,13 +126,37 @@ final class GeminiProvider implements AiProvider {
             throw new AiAnalysisException(
                     AiAnalysisException.Kind.MALFORMED_RESPONSE, "Gemini's response envelope was not valid JSON.", e);
         }
-        JsonNode text = root.path("candidates")
-                .path(0)
-                .path("content")
-                .path("parts")
-                .path(0)
-                .path("text");
+        JsonNode blockReason = root.path("promptFeedback").path("blockReason");
+        if (!blockReason.isMissingNode() && !blockReason.isNull()) {
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.UNSUPPORTED_RESPONSE,
+                    "Gemini blocked the response due to safety filters (blockReason: " + blockReason.asText() + ").");
+        }
+
+        JsonNode candidates = root.path("candidates");
+        if (!candidates.isArray() || candidates.isEmpty()) {
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.MALFORMED_RESPONSE,
+                    "Gemini's response did not contain a candidates array.");
+        }
+
+        JsonNode firstCandidate = candidates.path(0);
+        JsonNode text = firstCandidate.path("content").path("parts").path(0).path("text");
         if (text.isMissingNode() || text.isNull()) {
+            // A candidate that finished for a reason other than normal completion (SAFETY,
+            // RECITATION, PROHIBITED_CONTENT, SPII, ...) and carries no text is Gemini's way of
+            // saying the response was blocked/filtered, not a malformed envelope - report it as
+            // an actionable, well-formed-but-unusable response instead of a generic parse error.
+            String finishReason = firstCandidate.path("finishReason").asText(null);
+            if (finishReason != null
+                    && !finishReason.isBlank()
+                    && !"STOP".equals(finishReason)
+                    && !"MAX_TOKENS".equals(finishReason)) {
+                throw new AiAnalysisException(
+                        AiAnalysisException.Kind.UNSUPPORTED_RESPONSE,
+                        "Gemini did not return usable content (finishReason: " + finishReason
+                                + "); the response may have been blocked or filtered.");
+            }
             throw new AiAnalysisException(
                     AiAnalysisException.Kind.MALFORMED_RESPONSE,
                     "Gemini's response did not contain candidates[0].content.parts[0].text.");

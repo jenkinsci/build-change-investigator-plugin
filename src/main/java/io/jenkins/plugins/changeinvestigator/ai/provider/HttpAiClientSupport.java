@@ -43,12 +43,25 @@ final class HttpAiClientSupport {
             throws AiAnalysisException {
         HttpClient client = newHttpClient(timeout);
 
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(timeout)
-                .POST(HttpRequest.BodyPublishers.ofString(body));
-        headers.forEach(requestBuilder::header);
-        HttpRequest request = requestBuilder.build();
+        HttpRequest request;
+        try {
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(timeout)
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+            headers.forEach(requestBuilder::header);
+            request = requestBuilder.build();
+        } catch (IllegalArgumentException e) {
+            // URI.create(...) and HttpRequest.Builder both throw this (unchecked) for a malformed
+            // or unsupported endpoint URL (bad syntax, missing/unsupported scheme, ...) rather
+            // than a checked exception - without this, a misconfigured base URL/endpoint would
+            // propagate as a raw IllegalArgumentException instead of a properly-kinded,
+            // user-facing AiAnalysisException.
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.INVALID_ENDPOINT,
+                    "The configured endpoint URL for " + providerLabel + " is invalid: " + e.getMessage(),
+                    e);
+        }
 
         HttpResponse<String> response;
         try {
@@ -74,12 +87,32 @@ final class HttpAiClientSupport {
                     AiAnalysisException.Kind.CONNECTION_FAILED, "AI analysis was interrupted.", e);
         }
 
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+        int status = response.statusCode();
+        if (status < 200 || status >= 300) {
             throw new AiAnalysisException(
-                    AiAnalysisException.Kind.HTTP_ERROR,
-                    providerLabel + " returned HTTP " + response.statusCode() + ": " + snippet(response.body()));
+                    kindForStatus(status),
+                    providerLabel + " returned HTTP " + status + ": " + snippet(response.body()));
         }
         return response.body();
+    }
+
+    /**
+     * Maps an HTTP status code to the most specific {@link AiAnalysisException.Kind} that can be
+     * determined from the status alone. Providers whose JSON error body distinguishes further
+     * (e.g. OpenAI's HTTP 429 covering both rate limiting and insufficient-quota) may re-classify
+     * the caught exception after inspecting the body themselves; this shared mapping only
+     * guarantees the coarse category every caller can rely on without knowing any provider's
+     * specific error-body shape.
+     */
+    private static AiAnalysisException.Kind kindForStatus(int status) {
+        return switch (status) {
+            case 401 -> AiAnalysisException.Kind.AUTHENTICATION_FAILED;
+            case 403 -> AiAnalysisException.Kind.AUTHORIZATION_FAILED;
+            case 404 -> AiAnalysisException.Kind.MODEL_NOT_FOUND;
+            case 429 -> AiAnalysisException.Kind.RATE_LIMITED;
+            default ->
+                status >= 500 ? AiAnalysisException.Kind.PROVIDER_UNAVAILABLE : AiAnalysisException.Kind.HTTP_ERROR;
+        };
     }
 
     static String snippet(String body) {

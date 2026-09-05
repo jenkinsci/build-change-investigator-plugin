@@ -48,17 +48,37 @@ public final class AiAnalysisService {
             LOGGER.log(Level.WARNING, "Unexpected error during AI analysis", e);
             return AiAssessment.failed(
                     "Unexpected error during AI analysis: " + e.getClass().getSimpleName());
+        } catch (LinkageError e) {
+            // A provider SDK (most notably AWS Bedrock's SDK) can fail to link at runtime if a
+            // conflicting version of a shared library is visible through another installed
+            // plugin's classloader - this is an Error, not an Exception, so it is deliberately
+            // caught separately here rather than folded into the RuntimeException branch above.
+            // Never let this - or any other provider-integration failure - reach Jenkins' own
+            // request-handling boundary uncaught, which would render the generic "Oops" page.
+            LOGGER.log(Level.WARNING, "AI provider failed to load/link correctly", e);
+            return AiAssessment.failed("AI analysis failed unexpectedly due to an internal provider error " + "("
+                    + e.getClass().getSimpleName() + "). See the Jenkins log for details.");
         }
     }
 
     private static String describeFailure(AiAnalysisException e) {
         return switch (e.getKind()) {
-            case CREDENTIALS_MISSING, CONFIGURATION_INVALID ->
-                "AI analysis is not configured correctly: " + e.getMessage();
+            case CREDENTIALS_MISSING,
+                    CONFIGURATION_INVALID,
+                    INVALID_REGION,
+                    INVALID_ENDPOINT,
+                    MODEL_NOT_FOUND,
+                    DEPLOYMENT_NOT_FOUND -> "AI analysis is not configured correctly: " + e.getMessage();
+            case AUTHENTICATION_FAILED, AUTHORIZATION_FAILED, ASSUME_ROLE_FAILED ->
+                "AI provider rejected the request: " + e.getMessage();
             case TIMEOUT -> "AI provider did not respond in time: " + e.getMessage();
             case CONNECTION_FAILED -> "Could not reach the AI provider: " + e.getMessage();
+            case RATE_LIMITED, QUOTA_EXCEEDED, PROVIDER_UNAVAILABLE ->
+                "AI provider is temporarily unable to handle the request: " + e.getMessage();
             case HTTP_ERROR -> "AI provider returned an error: " + e.getMessage();
-            case MALFORMED_RESPONSE -> "AI provider returned an unusable response: " + e.getMessage();
+            case MALFORMED_RESPONSE, UNSUPPORTED_RESPONSE ->
+                "AI provider returned an unusable response: " + e.getMessage();
+            case UNKNOWN_PROVIDER_ERROR -> "AI analysis failed unexpectedly: " + e.getMessage();
             case DISABLED -> "AI analysis is disabled.";
         };
     }

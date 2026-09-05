@@ -50,7 +50,21 @@
     <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
 
     <aws-credentials.version>265.v8422a_f384cd9</aws-credentials.version>
-    <aws-sdk.version>2.54.11</aws-sdk.version>
+    <!-- Pinned to exactly the AWS SDK v2 version the "Amazon Web Services SDK 2 :: Core"
+         Jenkins plugin (aws-java-sdk2-core, a transitive dependency of aws-credentials above)
+         currently bundles - confirmed via that plugin's own update-center metadata, and the only
+         version it offers as of this writing. This is not a coincidence: aws-credentials pulls
+         aws-java-sdk2-core in as a real Jenkins plugin dependency, so its classes for shared
+         "software.amazon.awssdk.*" packages (aws-core, sdk-core, utils, regions, ...) are visible
+         to - and resolved ahead of - this plugin's own bundled copies of those same packages.
+         Bundling a newer AWS SDK version here than aws-java-sdk2-core provides is a genuine
+         production bug, not just a theoretical risk: bedrockruntime classes compiled against a
+         newer AwsClientEndpointProvider API were found (via a real Jenkins 2.541.3 instance) to
+         link against aws-java-sdk2-core's older, incompatible class at runtime, throwing
+         java.lang.NoSuchMethodError from inside BedrockRuntimeClient.builder().build() on every
+         single Bedrock call. Keeping this version aligned with aws-java-sdk2-core's is the fix;
+         if aws-java-sdk2-core is ever updated, bump this to match at the same time. -->
+    <aws-sdk.version>2.42.33</aws-sdk.version>
     <!-- The AWS SDK v2 modules the Bedrock provider needs (bedrockruntime, url-connection-client)
          are plain (non-plugin) jars, so the hpi-maven-plugin bundles them, along with their own
          minimal required transitive dependencies, directly into this plugin's .hpi.
@@ -134,19 +148,26 @@
     </dependency>
 
     <!-- AWS Bedrock Converse API. The AWS SDK v2 service-client parent POM defaults every
-         service module to bundling BOTH apache5-client (HttpClient 5, ~2.4MB with its own
-         transitive httpclient5/httpcore5/httpcore5-h2) and netty-nio-client - excluded here
-         and replaced with the much lighter blocking url-connection-client, since this plugin
-         only ever makes one synchronous call at a time - see BedrockProvider. (Not
-         "apache-client", the legacy HttpClient 4-based artifact id from older SDK versions -
-         current versions default to "apache5-client".) -->
+         service module to bundling a synchronous HTTP transport plus netty-nio-client - excluded
+         here and replaced with the much lighter blocking url-connection-client, since this
+         plugin only ever makes one synchronous call at a time - see BedrockProvider.
+
+         The default sync transport's artifact id depends on the SDK line: current SDK v2
+         releases default to "apache5-client" (HttpClient 5), but this plugin is intentionally
+         pinned to 2.42.33 (see aws-sdk.version above, for classloader compatibility with the
+         aws-java-sdk2-core Jenkins plugin) - and at that older version the default is still
+         "apache-client", the legacy HttpClient 4-based module, which is what actually needs
+         excluding here. If aws-sdk.version is ever bumped back up past the point where AWS
+         switched the default, this exclusion's artifactId must be changed back to
+         "apache5-client" (verify against the actual RequireUpperBoundDeps/dependency:tree
+         output for the target version rather than assuming). -->
     <dependency>
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>bedrockruntime</artifactId>
       <exclusions>
         <exclusion>
           <groupId>software.amazon.awssdk</groupId>
-          <artifactId>apache5-client</artifactId>
+          <artifactId>apache-client</artifactId>
         </exclusion>
         <exclusion>
           <groupId>software.amazon.awssdk</groupId>
@@ -156,17 +177,19 @@
     </dependency>
     <!-- AWS STS AssumeRole support for Bedrock's optional Role ARN field (BedrockProvider) -
          StsAssumeRoleCredentialsProvider only, never a hand-signed request. Same excluded
-         default transport as bedrockruntime above; sts shares the rest of its transitive
-         closure (sdk-core, auth, regions, ...) with bedrockruntime already, at the identical
-         BOM-managed version, so the net size impact is just the sts module itself plus its own
-         XML/query-protocol modules - see the dependency-size report for the measured delta. -->
+         default transport as bedrockruntime above (see the comment there for why it is
+         "apache-client" rather than "apache5-client" at the currently-pinned SDK version); sts
+         shares the rest of its transitive closure (sdk-core, auth, regions, ...) with
+         bedrockruntime already, at the identical BOM-managed version, so the net size impact is
+         just the sts module itself plus its own XML/query-protocol modules - see the
+         dependency-size report for the measured delta. -->
     <dependency>
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>sts</artifactId>
       <exclusions>
         <exclusion>
           <groupId>software.amazon.awssdk</groupId>
-          <artifactId>apache5-client</artifactId>
+          <artifactId>apache-client</artifactId>
         </exclusion>
         <exclusion>
           <groupId>software.amazon.awssdk</groupId>

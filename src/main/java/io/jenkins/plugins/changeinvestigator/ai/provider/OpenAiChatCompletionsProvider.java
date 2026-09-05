@@ -54,6 +54,15 @@ final class OpenAiChatCompletionsProvider implements AiProvider {
             throw new AiAnalysisException(
                     AiAnalysisException.Kind.CONFIGURATION_INVALID, "No base URL is configured for AI analysis.");
         }
+        if (model == null || model.isBlank()) {
+            // Caught here, before any network call is attempted: an empty model field is a
+            // configuration mistake, not something any provider's HTTP error response could tell
+            // us about more specifically (some gateways would even silently accept it or 400 in a
+            // way indistinguishable from other bad-request causes).
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.CONFIGURATION_INVALID,
+                    "No model is configured for " + providerDisplayName + ".");
+        }
 
         String url = stripTrailingSlash(baseUrl) + "/chat/completions";
         String requestBody = buildRequestBody(request);
@@ -65,8 +74,32 @@ final class OpenAiChatCompletionsProvider implements AiProvider {
         }
 
         Duration timeout = Duration.ofSeconds(Math.max(1, timeoutSeconds));
-        String responseBody = HttpAiClientSupport.post(providerDisplayName, url, headers, requestBody, timeout);
+        String responseBody;
+        try {
+            responseBody = HttpAiClientSupport.post(providerDisplayName, url, headers, requestBody, timeout);
+        } catch (AiAnalysisException e) {
+            throw refineRateLimitKind(e);
+        }
         return new AiAnalysisResult(extractContent(responseBody), providerDisplayName, model);
+    }
+
+    /**
+     * {@link HttpAiClientSupport} can only classify HTTP 429 as the generic {@code RATE_LIMITED}
+     * kind, since it has no knowledge of any provider's JSON error shape. OpenAI (and
+     * OpenAI-compatible gateways that mirror its error format) distinguishes two very different
+     * situations under the same status code: a transient rate limit versus an account/project
+     * that is out of quota or billing credits - the latter will never succeed on retry, so it
+     * deserves its own, more actionable {@link AiAnalysisException.Kind#QUOTA_EXCEEDED}.
+     */
+    private static AiAnalysisException refineRateLimitKind(AiAnalysisException e) {
+        if (e.getKind() != AiAnalysisException.Kind.RATE_LIMITED || e.getMessage() == null) {
+            return e;
+        }
+        String lower = e.getMessage().toLowerCase(java.util.Locale.ROOT);
+        if (lower.contains("insufficient_quota") || lower.contains("insufficient quota") || lower.contains("billing")) {
+            return new AiAnalysisException(AiAnalysisException.Kind.QUOTA_EXCEEDED, e.getMessage(), e);
+        }
+        return e;
     }
 
     private String buildRequestBody(AiAnalysisRequest request) {

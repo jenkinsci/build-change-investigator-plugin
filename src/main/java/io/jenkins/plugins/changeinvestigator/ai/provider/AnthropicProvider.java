@@ -8,6 +8,7 @@ import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisResult;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -66,8 +67,31 @@ final class AnthropicProvider implements AiProvider {
 
         String url = stripTrailingSlash(baseUrl) + "/messages";
         Duration timeout = Duration.ofSeconds(Math.max(1, timeoutSeconds));
-        String responseBody = HttpAiClientSupport.post("Anthropic", url, headers, requestBody, timeout);
+        String responseBody;
+        try {
+            responseBody = HttpAiClientSupport.post("Anthropic", url, headers, requestBody, timeout);
+        } catch (AiAnalysisException e) {
+            throw refineKind(e);
+        }
         return new AiAnalysisResult(extractText(responseBody), "Anthropic", model);
+    }
+
+    /**
+     * {@link HttpAiClientSupport} can only classify by HTTP status. Anthropic surfaces an
+     * exhausted account/billing balance as HTTP 400 {@code invalid_request_error} with a message
+     * that literally says so ("Your credit balance is too low...") - the shared status mapping
+     * would otherwise leave this as the generic {@code HTTP_ERROR} alongside every other 400,
+     * instead of the more actionable {@code QUOTA_EXCEEDED}.
+     */
+    private static AiAnalysisException refineKind(AiAnalysisException e) {
+        if (e.getKind() != AiAnalysisException.Kind.HTTP_ERROR || e.getMessage() == null) {
+            return e;
+        }
+        String lower = e.getMessage().toLowerCase(Locale.ROOT);
+        if (lower.contains("credit balance") || lower.contains("insufficient_quota")) {
+            return new AiAnalysisException(AiAnalysisException.Kind.QUOTA_EXCEEDED, e.getMessage(), e);
+        }
+        return e;
     }
 
     private String buildRequestBody(AiAnalysisRequest request) {
