@@ -91,4 +91,17 @@ class LogReducerTest {
         LogReducer.Result result = LogReducer.reduce(new BufferedReader(new StringReader(log)), 10_000);
         assertTrue(result.linesScanned == 25, "scanned=" + result.linesScanned);
     }
+
+    @Test
+    void retainsQualifiedExceptionsAndDistantMavenExecutionContext() throws IOException {
+        String log = "[INFO] --- exec:3.1:java (payments-integration-test) @ payment-common ---\n"
+                + "ordinary output\n".repeat(30)
+                + "java.lang.IllegalStateException: handshake refused\n"
+                + " at com.acme.ServiceCheck.run(ServiceCheck.java:1)\n"
+                + "ordinary output\n".repeat(30);
+        String excerpt = String.join("\n", LogReducer.reduce(new BufferedReader(new StringReader(log)), 10000).lines);
+        assertTrue(excerpt.contains("payments-integration-test"), excerpt);
+        assertTrue(excerpt.contains("java.lang.IllegalStateException"), excerpt);
+        assertTrue(excerpt.contains("ServiceCheck.java:1"), excerpt);
+    }
 }

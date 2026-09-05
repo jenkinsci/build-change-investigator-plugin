@@ -57,6 +57,9 @@ public final class PromptBuilder {
     /** Renders the evidence bundle as the compact JSON document sent as the user message. */
     public String userContent(BuildInvestigationEvidence evidence) {
         ObjectNode root = objectMapper.createObjectNode();
+        root.put(
+                "evidenceReferences",
+                "E1: changes; E2: failureLogExcerpt; E3: failedBuild and previousSuccessfulBuild. Cite only references actually used.");
 
         root.put("jobFullName", evidence.getJobFullName());
 

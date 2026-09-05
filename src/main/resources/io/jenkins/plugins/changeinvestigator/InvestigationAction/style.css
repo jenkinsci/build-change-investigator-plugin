@@ -1,55 +1,402 @@
-/*
- * Plugin-specific styling for the Build Change Investigation page that has no equivalent in
- * the Jenkins Design Library (as of the "table", "cards", "spacing" and "colors" pages at
- * https://weekly.ci.jenkins.io/design-library/). Everything else on this page uses native
- * Jenkins components/classes directly in the Jelly view instead of custom CSS.
- *
- * Every color here comes from a Jenkins-provided CSS custom property so this renders correctly
- * in both the default theme and the Jenkins Dark Theme plugin - nothing is hard-coded.
- */
-
-.bci-comparison {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
+.bci{
+  --bci-line:var(--input-border,#dce1e7);
+  --bci-muted:var(--text-color-secondary,#626b78);
+  --bci-error:var(--error-color,#b32636);
+  --bci-link:var(--link-color,#175dae);
+  --bci-ai:var(--purple,#79549a);
+  max-width:1400px;
+  color:var(--text-color);
+  font-size:14px
 }
-
-/* Jenkins has no built-in grid/flex layout for arranging multiple <l:card> elements side by
-   side (see the Design Library "Cards" page), so the cards need an explicit width here. */
-.bci-comparison > .jenkins-card {
-  flex: 1 1 240px;
+.bci h1{
+  font-size:26px;
+  margin:5px 0;
+  letter-spacing:-.5px
 }
-
-/* Evidence notes wraps a growing bulleted list, not a short empty-state message like the
-   AI-disabled/AI-not-run notices elsewhere on this page - override l:notice's default
-   centered, min-height empty-state layout (see the Design Library "Empty States" page) so it
-   reads left-to-right on wide screens instead of floating in the middle of an oversized box.
-   Scoped to this one notice only; the other l:notice usages on this page keep the component's
-   default centered treatment, which suits their short single-line messages. */
-.bci-evidence-notes .jenkins-notice {
-  align-items: flex-start;
-  justify-content: flex-start;
-  text-align: left;
-  min-height: 0;
+.bci h2{
+  font-size:18px;
+  margin:6px 0 10px
 }
-
-.bci-evidence-notes .jenkins-notice__description {
-  text-align: left;
+.bci h3{
+  font-size:13px;
+  margin:17px 0 8px
 }
-
-.bci-confidence-high {
-  color: var(--success-color);
+.bci p{
+  margin:8px 0 12px
 }
-
-.bci-confidence-medium {
-  color: var(--warning-color);
+.bci-heading,.bci-section-head,.bci-dialog-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:15px
 }
-
-.bci-confidence-low {
-  color: var(--error-color);
+.bci-actions{
+  display:flex;
+  gap:8px
 }
-
-.bci-confidence-unknown {
-  color: var(--text-color-secondary);
+.bci-actions button{
+  font-size:12px
 }
+.bci-label{
+  font-size:10px;
+  font-weight:650;
+  letter-spacing:1px;
+  color:var(--bci-muted)
+}
+.bci-result{
+  font-size:13px;
+  color:var(--bci-error);
+  margin-left:12px
+}
+.bci-boundary{
+  border-block:1px solid var(--bci-line);
+  padding:14px 0 12px;
+  margin:20px 0
+}
+.bci-window{
+  display:flex;
+  align-items:center;
+  gap:24px
+}
+.bci-build{
+  font-size:22px;
+  font-weight:600;
+  margin-top:4px
+}
+.bci-build a{
+  color:var(--bci-error)
+}
+.bci-good a{
+  color:var(--success-color,#18734a)
+}
+.bci-delta{
+  font-size:12px;
+  color:var(--bci-muted);
+  text-align:center
+}
+.bci-window-note{
+  font-size:12px;
+  color:var(--bci-muted);
+  margin-top:10px
+}
+.bci-window-note details{
+  display:inline-block;
+  margin-left:10px
+}
+.bci-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 240px;
+  gap:30px
+}
+.bci article{
+  min-width:0
+}
+.bci-source{
+  font-size:10px;
+  color:var(--bci-muted);
+  letter-spacing:.5px;
+  flex-shrink:0
+}
+.bci-muted,.bci-comparison small{
+  color:var(--bci-muted);
+  font-size:12px
+}
+.bci-failure{
+  border-left:3px solid var(--bci-error);
+  background:color-mix(in srgb,var(--bci-error) 5%,var(--background,#fff));
+  padding:10px 13px;
+  font:13px/1.5 var(--font-family-monospace,monospace);
+  overflow-wrap:anywhere
+}
+.bci pre{
+  font:13px/1.5 var(--font-family-monospace,monospace);
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  margin:5px 0
+}
+.bci-failure pre{
+  color:var(--bci-error)
+}
+.bci-support{
+  display:flex;
+  gap:16px;
+  flex-wrap:wrap;
+  margin:12px 0 17px;
+  font-size:12px
+}
+.bci summary{
+  cursor:pointer
+}
+.bci-support summary{
+  color:var(--bci-link)
+}
+.bci-support details[open]{
+  flex-basis:100%
+}
+.bci-support details[open] pre{
+  max-height:320px;
+  overflow:auto;
+  background:var(--table-background,var(--background));
+  padding:12px
+}
+.bci-change{
+  border-top:1px solid var(--bci-line);
+  padding-top:14px
+}
+.bci-ranking{
+  display:flex;
+  gap:16px;
+  flex-wrap:wrap;
+  align-items:center;
+  font-size:12px;
+  margin-bottom:12px
+}
+.bci-ranking button{
+  border:0;
+  background:none;
+  color:var(--bci-link);
+  padding:0;
+  cursor:pointer;
+  font:inherit
+}
+.bci-path{
+  font:600 14px/1.5 var(--font-family-monospace,monospace);
+  color:var(--bci-link);
+  overflow-wrap:anywhere;
+  min-width:0
+}
+.bci-message{
+  font-size:12px;
+  color:var(--bci-muted)
+}
+.bci-comparison{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
+  margin:14px 0
+}
+.bci-comparison>div{
+  border-left:2px solid var(--bci-line);
+  padding-left:12px;
+  min-width:0;
+  overflow-wrap:anywhere
+}
+.bci-record>p{
+  font-size:13px
+}
+.bci-record[hidden]{
+  display:none
+}
+.bci-similar{
+  padding-top:14px;
+  border-top:1px solid var(--bci-line);
+  font-size:12px;
+  margin-top:20px!important
+}
+.bci-evidence{
+  margin-top:18px;
+  font-size:12px;
+  color:var(--bci-muted)
+}
+.bci-ai{
+  align-self:start;
+  border-left:1px solid var(--bci-line);
+  padding-left:22px;
+  font-size:12px;
+  color:var(--bci-muted)
+}
+.bci-ai h2,.bci-interpretation{
+  color:var(--bci-ai)
+}
+.bci-ai h2{
+  font-size:16px
+}
+.bci-ai h3{
+  color:var(--text-color)
+}
+.bci-ai ol,.bci-ai ul{
+  padding-left:18px
+}
+.bci-ai li{
+  margin:6px 0;
+  overflow-wrap:anywhere
+}
+.bci-ai .bci-provider{
+  font-size:11px;
+  border-top:1px solid var(--bci-line);
+  padding-top:12px
+}
+.bci-ai .jenkins-button{
+  white-space:normal
+}
+.bci dialog{
+  width:min(720px,calc(100% - 32px));
+  max-height:85vh;
+  overflow:auto;
+  border:1px solid var(--bci-line);
+  border-radius:8px;
+  padding:24px;
+  background:var(--background,#fff);
+  color:var(--text-color)
+}
+.bci dialog::backdrop{
+  background:#10131877
+}
+.bci dialog button[data-bci-close]{
+  background:none;
+  border:0;
+  color:inherit;
+  font-size:24px;
+  cursor:pointer
+}
+.bci dialog label{
+  display:inline-flex;
+  gap:10px;
+  align-items:center;
+  margin:10px
+}
+.bci dialog select{
+  background:var(--input-color,var(--background));
+  color:inherit;
+  border:1px solid var(--bci-line);
+  padding:8px
+}
+.bci-choice{
+  display:block;
+  width:100%;
+  text-align:left;
+  padding:12px;
+  margin:8px 0;
+  border:1px solid var(--bci-line);
+  background:var(--background);
+  color:var(--text-color);
+  border-radius:5px;
+  cursor:pointer;
+  overflow-wrap:anywhere
+}
+.bci-choice span,.bci-choice small{
+  display:block;
+  font-size:12px;
+  color:var(--bci-muted)
+}
+.bci #bci-bundle:not([hidden]){
+  width:100%;
+  min-height:240px;
+  white-space:pre-wrap
+}
+.bci a:focus-visible,.bci button:focus-visible,.bci summary:focus-visible{
+  outline:2px solid var(--bci-link);
+  outline-offset:3px
+}
+@media(max-width:1100px){
+  .bci-layout{
+    grid-template-columns:1fr
+  }
+  .bci-ai{
+    border-left:0;
+    border-top:1px solid var(--bci-line);
+    padding:20px 0;
+    max-width:650px
+  }
+  .bci-window{
+    gap:15px
+  }
+  .bci-actions{
+    flex-direction:column
+  }
+}
+@media(max-width:600px){
+  .bci-heading{
+    display:block
+  }
+  .bci-actions{
+    flex-direction:row;
+    margin-top:12px
+  }
+  .bci-window{
+    flex-wrap:wrap;
+    gap:15px
+  }
+  .bci-comparison{
+    grid-template-columns:1fr
+  }
+  .bci-section-head{
+    align-items:flex-start
+  }
+  .bci-source{
+    font-size:9px
+  }
+  .bci-window-note details{
+    margin:8px 0 0
+  }
+  .bci-ranking{
+    gap:12px
+  }
+  .bci-path{
+    font-size:12px
+  }
+  .bci-failure pre{
+    font-size:12px
+  }
+  .bci-dialog-head{
+    align-items:flex-start
+  }
+}
+.bci pre{
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  background:transparent;
+  padding:0
+}
+.bci-comparison pre{
+  margin:6px 0;
+  min-height:20px
+}
+.bci-failure pre{
+  margin-top:5px
+}
+.bci-source{
+  white-space:nowrap
+}
+.bci-result[data-result="SUCCESS"]{
+  color:var(--success-color,#18734a)
+}
+.bci-ai a + a{
+  margin-left:8px
+}
+[data-theme=dark] .bci{
+  --bci-ai:#c19ae5;
+  --bci-link:var(--link-color)
+}
+.bci dialog{
+  background:var(--dialog-background,var(--background))
+}
+.bci-record>p>.jenkins-button{
+  display:table;
+  margin-top:10px
+}
+.bci-unmatched span{
+  display:block;
+  font:12px/1.6 var(--font-family-monospace,monospace);
+  overflow-wrap:anywhere;
+  color:var(--bci-muted)
+}
+.bci-native-navigation>summary{
+  display:none
+}
+@media(max-width:900px){
+  .bci-native-navigation>summary{
+    display:list-item;
+    cursor:pointer;
+    padding:12px;
+    font-weight:600
+  }
+  .bci-native-navigation[open]>summary{
+    margin-bottom:10px
+  }
+}
+.bci-native-navigation * { box-sizing: border-box; }
+.bci-boundary[data-comparison="true"] .bci-build a { color: var(--bci-link); }
+.bci:has(.bci-result[data-result="SUCCESS"]) .bci-failure { border-color: var(--bci-line); background: var(--table-background); }
+.bci:has(.bci-result[data-result="SUCCESS"]) .bci-failure pre { color: var(--text-color); }

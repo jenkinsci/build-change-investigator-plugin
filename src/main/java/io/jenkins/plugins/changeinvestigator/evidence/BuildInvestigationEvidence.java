@@ -155,7 +155,8 @@ public final class BuildInvestigationEvidence implements Serializable {
      * newlines, running every line together in the rendered page.
      */
     public String getLogExcerptText() {
-        return String.join("\n", logExcerpt);
+        return io.jenkins.plugins.changeinvestigator.investigation.FailureSignal.safe(
+                String.join("\n", logExcerpt), 24000);
     }
 
     public boolean isLogExcerptTruncated() {

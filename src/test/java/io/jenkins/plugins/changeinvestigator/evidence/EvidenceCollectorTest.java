@@ -18,6 +18,27 @@ import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 class EvidenceCollectorTest {
 
     @Test
+    void capsTotalPathsAcrossCommitsWithAnExplicitWarning(JenkinsRule jenkins) throws Exception {
+        FreeStyleProject project = jenkins.createFreeStyleProject("bounded-changes");
+        jenkins.buildAndAssertSuccess(project);
+        List<String> paths = java.util.stream.IntStream.range(0, 1500)
+                .mapToObj(i -> "src/File" + i + ".java")
+                .toList();
+        project.setScm(new FakeChangeLogSCM(List.of(
+                new FakeChangeLogSCM.FakeCommit("first", "alice", "First change", paths),
+                new FakeChangeLogSCM.FakeCommit("second", "alice", "Second change", paths))));
+        project.getBuildersList().add(new FailureBuilder());
+        var run = project.scheduleBuild2(0).get();
+        var evidence = new EvidenceCollector(10000).collect(run);
+        assertEquals(
+                2000,
+                evidence.getChangeEntries().stream()
+                        .mapToInt(e -> e.getAffectedFiles().size())
+                        .sum());
+        assertTrue(evidence.getWarnings().stream().anyMatch(w -> w.contains("2000")));
+    }
+
+    @Test
     void findsPreviousSuccessfulBuildAndChangesSinceIt(JenkinsRule jenkins) throws Exception {
         FreeStyleProject project = jenkins.createFreeStyleProject("with-history");
 

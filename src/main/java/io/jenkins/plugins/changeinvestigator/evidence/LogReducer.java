@@ -31,7 +31,10 @@ public final class LogReducer {
     private static final Pattern CONTROL_CHARS = Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]");
 
     private static final List<Pattern> INTERESTING_PATTERNS = List.of(
+            Pattern.compile("\\b[\\w.$]+(?:Exception|Error)\\b"),
+            Pattern.compile("--- .*? @ [\\w.-]+ ---"),
             Pattern.compile("(?i)\\bERROR\\b"),
+            Pattern.compile("\\[Pipeline\\] \\{|> Task :"),
             Pattern.compile("(?i)\\bFATAL\\b"),
             Pattern.compile("(?i)\\bException\\b"),
             Pattern.compile("(?i)Caused by:"),
@@ -74,13 +77,24 @@ public final class LogReducer {
         List<String> allLines = new ArrayList<>();
         int scanned = 0;
         boolean moreAvailable = false;
-        String raw;
-        while ((raw = reader.readLine()) != null) {
-            if (scanned >= MAX_LINES_SCANNED) {
+        int consumed = 0;
+        boolean[] privateKey = {false};
+        StringBuilder pending = new StringBuilder();
+        int value;
+        while ((value = reader.read()) != -1) {
+            if (++consumed > 4_000_000 || scanned >= MAX_LINES_SCANNED) {
                 moreAvailable = true;
                 break;
             }
-            allLines.add(clean(raw));
+            if (value == '\n') {
+                allLines.add(cleanPrivate(pending.toString(), privateKey));
+                pending.setLength(0);
+                scanned++;
+            } else if (pending.length() < 8000) pending.append((char) value);
+            else moreAvailable = true;
+        }
+        if (pending.length() > 0 && scanned < MAX_LINES_SCANNED) {
+            allLines.add(cleanPrivate(pending.toString(), privateKey));
             scanned++;
         }
 
@@ -138,6 +152,15 @@ public final class LogReducer {
             }
         }
         return false;
+    }
+
+    private static String cleanPrivate(String line, boolean[] inside) {
+        if (line.contains("-----BEGIN ") && line.contains("PRIVATE KEY-----")) inside[0] = true;
+        if (inside[0]) {
+            if (line.contains("-----END ") && line.contains("PRIVATE KEY-----")) inside[0] = false;
+            return "[REDACTED]-PRIVATE-KEY-BLOCK";
+        }
+        return clean(line);
     }
 
     private static String clean(String line) {

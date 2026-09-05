@@ -33,6 +33,10 @@ public final class EvidenceCollector {
     }
 
     public BuildInvestigationEvidence collect(Run<?, ?> failedBuild) {
+        return collect(failedBuild, null);
+    }
+
+    public BuildInvestigationEvidence collect(Run<?, ?> failedBuild, Run<?, ?> baseline) {
         BuildInvestigationEvidence.Builder b = BuildInvestigationEvidence.builder();
 
         hudson.model.Result result = failedBuild.getResult();
@@ -46,7 +50,8 @@ public final class EvidenceCollector {
                 .failedBuildDurationString(failedBuild.getDurationString());
 
         collectNodeInfo(failedBuild, b);
-        Run<?, ?> previousSuccessful = collectPreviousSuccessful(failedBuild, b);
+        Run<?, ?> previousSuccessful = baseline == null ? collectPreviousSuccessful(failedBuild, b) : baseline;
+        if (baseline != null) b.previousSuccessfulBuild(baseline.getNumber(), safeUrl(baseline.getUrl()));
         collectChanges(failedBuild, previousSuccessful, b);
         collectLog(failedBuild, b);
 
@@ -67,7 +72,15 @@ public final class EvidenceCollector {
     }
 
     private Run<?, ?> collectPreviousSuccessful(Run<?, ?> failedBuild, BuildInvestigationEvidence.Builder b) {
-        Run<?, ?> previousSuccessful = failedBuild.getPreviousSuccessfulBuild();
+        Run<?, ?> previousSuccessful = failedBuild.getPreviousBuild();
+        int searched = 0;
+        while (previousSuccessful != null
+                && !hudson.model.Result.SUCCESS.equals(previousSuccessful.getResult())
+                && searched++ < MAX_BUILDS_TO_WALK) previousSuccessful = previousSuccessful.getPreviousBuild();
+        if (searched >= MAX_BUILDS_TO_WALK) {
+            previousSuccessful = null;
+            b.addWarning("Successful baseline search reached the 200-build limit.");
+        }
         if (previousSuccessful == null) {
             b.noPreviousSuccessfulBuild();
             if (failedBuild.getPreviousBuild() == null) {
@@ -91,13 +104,23 @@ public final class EvidenceCollector {
         int previousSuccessfulNumber = previousSuccessful == null ? -1 : previousSuccessful.getNumber();
         Run<?, ?> cursor = failedBuild;
         int walked = 0;
+        int retainedPaths = 0;
         while (cursor != null && cursor.getNumber() != previousSuccessfulNumber && walked < MAX_BUILDS_TO_WALK) {
             List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeSets = safeGetChangeSets(cursor);
             for (ChangeLogSet<? extends ChangeLogSet.Entry> set : changeSets) {
                 anyChangeLogSupportSeen = true;
                 for (ChangeLogSet.Entry entry : set) {
-                    ChangeEntry converted = convert(entry, cursor.getNumber());
+                    if (entries.size() >= 500 || retainedPaths >= 2000) {
+                        b.addWarning(
+                                "Change evidence capped at 500 entries or 2000 paths; inspect native SCM changes for the full history.");
+                        java.util.Collections.reverse(entries);
+                        b.changeEntries(entries, true);
+                        b.lastKnownRevision(lastRevision);
+                        return;
+                    }
+                    ChangeEntry converted = convert(entry, cursor.getNumber(), 2000 - retainedPaths);
                     entries.add(converted);
+                    retainedPaths += converted.getAffectedFiles().size();
                     if (converted.hasCommitId()) {
                         lastRevision = converted.getCommitId();
                     }
@@ -107,6 +130,10 @@ public final class EvidenceCollector {
             walked++;
         }
 
+        if (retainedPaths >= 2000) {
+            b.addWarning(
+                    "Retained paths reached the 2000-path limit; inspect native SCM history for potentially omitted paths.");
+        }
         if (walked >= MAX_BUILDS_TO_WALK) {
             b.addWarning("More than " + MAX_BUILDS_TO_WALK + " builds separate this failure from the last "
                     + "success; change history was capped and may be incomplete.");
@@ -135,9 +162,11 @@ public final class EvidenceCollector {
     }
 
     private String lastCommitIdInFailedBuild(Run<?, ?> failedBuild) {
+        int inspected = 0;
         for (ChangeLogSet<? extends ChangeLogSet.Entry> set : safeGetChangeSets(failedBuild)) {
             String last = null;
             for (ChangeLogSet.Entry entry : set) {
+                if (inspected++ >= 500) return last;
                 String id = safeCommitId(entry);
                 if (id != null) {
                     last = id;
@@ -156,7 +185,8 @@ public final class EvidenceCollector {
             // and WorkflowRun (pipeline), so this works uniformly without a Git-specific or
             // freestyle-specific dependency.
             if (run instanceof RunWithSCM<?, ?> runWithScm) {
-                return runWithScm.getChangeSets();
+                List<ChangeLogSet<? extends ChangeLogSet.Entry>> sets = runWithScm.getChangeSets();
+                return sets.subList(0, Math.min(sets.size(), 500));
             }
             return List.of();
         } catch (RuntimeException e) {
@@ -165,11 +195,11 @@ public final class EvidenceCollector {
         }
     }
 
-    private ChangeEntry convert(ChangeLogSet.Entry entry, int buildNumber) {
+    private ChangeEntry convert(ChangeLogSet.Entry entry, int buildNumber, int pathLimit) {
         String author = safeAuthor(entry);
         String commitId = safeCommitId(entry);
         String message = safeMessage(entry);
-        List<String> affectedFiles = safeAffectedFiles(entry);
+        List<String> affectedFiles = safeAffectedFiles(entry, pathLimit);
         long timestamp = safeTimestamp(entry);
         return new ChangeEntry(commitId, author, message, affectedFiles, timestamp, buildNumber);
     }
@@ -177,7 +207,9 @@ public final class EvidenceCollector {
     private String safeAuthor(ChangeLogSet.Entry entry) {
         try {
             hudson.model.User user = entry.getAuthor();
-            return user == null ? null : user.getFullName();
+            return user == null
+                    ? null
+                    : io.jenkins.plugins.changeinvestigator.investigation.FailureSignal.safe(user.getFullName(), 200);
         } catch (RuntimeException e) {
             return null;
         }
@@ -186,7 +218,9 @@ public final class EvidenceCollector {
     private String safeCommitId(ChangeLogSet.Entry entry) {
         try {
             String id = entry.getCommitId();
-            return (id == null || id.isBlank()) ? null : id;
+            return (id == null || id.isBlank())
+                    ? null
+                    : io.jenkins.plugins.changeinvestigator.investigation.FailureSignal.safe(id, 100);
         } catch (RuntimeException e) {
             return null;
         }
@@ -195,15 +229,18 @@ public final class EvidenceCollector {
     private String safeMessage(ChangeLogSet.Entry entry) {
         try {
             String msg = entry.getMsg();
-            return msg == null ? "" : msg;
+            return io.jenkins.plugins.changeinvestigator.investigation.FailureSignal.safe(msg, 2000);
         } catch (RuntimeException e) {
             return "";
         }
     }
 
-    private List<String> safeAffectedFiles(ChangeLogSet.Entry entry) {
+    private List<String> safeAffectedFiles(ChangeLogSet.Entry entry, int limit) {
         try {
-            return entry.getAffectedPaths().stream().toList();
+            return entry.getAffectedPaths().stream()
+                    .limit(limit)
+                    .map(path -> io.jenkins.plugins.changeinvestigator.investigation.FailureSignal.safe(path, 500))
+                    .toList();
         } catch (RuntimeException e) {
             // Several SCM implementations throw UnsupportedOperationException here.
             return List.of();
