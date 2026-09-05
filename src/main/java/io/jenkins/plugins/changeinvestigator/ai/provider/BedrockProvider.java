@@ -6,20 +6,31 @@ import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisResult;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
 import java.net.URI;
 import java.time.Duration;
+import java.util.Locale;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
+import software.amazon.awssdk.services.bedrockruntime.model.AccessDeniedException;
 import software.amazon.awssdk.services.bedrockruntime.model.BedrockRuntimeException;
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseResponse;
 import software.amazon.awssdk.services.bedrockruntime.model.InferenceConfiguration;
+import software.amazon.awssdk.services.bedrockruntime.model.InternalServerException;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
+import software.amazon.awssdk.services.bedrockruntime.model.ModelErrorException;
+import software.amazon.awssdk.services.bedrockruntime.model.ModelNotReadyException;
+import software.amazon.awssdk.services.bedrockruntime.model.ModelTimeoutException;
+import software.amazon.awssdk.services.bedrockruntime.model.ResourceNotFoundException;
+import software.amazon.awssdk.services.bedrockruntime.model.ServiceUnavailableException;
 import software.amazon.awssdk.services.bedrockruntime.model.SystemContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ThrottlingException;
+import software.amazon.awssdk.services.bedrockruntime.model.ValidationException;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
@@ -45,6 +56,8 @@ import software.amazon.awssdk.services.sts.model.StsException;
  * {@link #chatCompletion}.
  */
 final class BedrockProvider implements AiProvider {
+
+    private static final Logger LOGGER = Logger.getLogger(BedrockProvider.class.getName());
 
     private final String region;
     private final String modelId;
@@ -173,22 +186,81 @@ final class BedrockProvider implements AiProvider {
             }
         } catch (StsException e) {
             throw new AiAnalysisException(
-                    AiAnalysisException.Kind.CREDENTIALS_MISSING,
+                    AiAnalysisException.Kind.ASSUME_ROLE_FAILED,
                     "Could not assume AWS role " + roleArn + ": "
                             + e.awsErrorDetails().errorMessage(),
                     e);
+        } catch (AccessDeniedException e) {
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.AUTHORIZATION_FAILED,
+                    "AWS Bedrock denied access to model/inference profile '" + modelId
+                            + "' (check the bedrock:InvokeModel IAM permission): " + e.getMessage(),
+                    e);
+        } catch (ResourceNotFoundException e) {
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.MODEL_NOT_FOUND,
+                    "AWS Bedrock model/inference profile '" + modelId + "' was not found in region " + region + ": "
+                            + e.getMessage(),
+                    e);
+        } catch (ValidationException e) {
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.CONFIGURATION_INVALID,
+                    "AWS Bedrock rejected the request configuration: " + e.getMessage(),
+                    e);
+        } catch (ModelTimeoutException e) {
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.TIMEOUT, "AWS Bedrock model timed out: " + e.getMessage(), e);
+        } catch (ModelNotReadyException | ServiceUnavailableException | InternalServerException e) {
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.PROVIDER_UNAVAILABLE,
+                    "AWS Bedrock is temporarily unavailable: " + e.getMessage(),
+                    e);
         } catch (ThrottlingException e) {
             throw new AiAnalysisException(
-                    AiAnalysisException.Kind.HTTP_ERROR, "AWS Bedrock throttled the request: " + e.getMessage(), e);
+                    AiAnalysisException.Kind.RATE_LIMITED, "AWS Bedrock throttled the request: " + e.getMessage(), e);
+        } catch (ModelErrorException e) {
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.HTTP_ERROR,
+                    "AWS Bedrock's underlying model returned an error: " + e.getMessage(),
+                    e);
         } catch (BedrockRuntimeException e) {
-            AiAnalysisException.Kind kind = e.statusCode() == 401 || e.statusCode() == 403
-                    ? AiAnalysisException.Kind.CREDENTIALS_MISSING
-                    : AiAnalysisException.Kind.HTTP_ERROR;
+            // Fallback for any Bedrock service exception not covered by a more specific kind
+            // above - still safely categorized by status code rather than left generic.
+            AiAnalysisException.Kind kind =
+                    switch (e.statusCode()) {
+                        case 401 -> AiAnalysisException.Kind.AUTHENTICATION_FAILED;
+                        case 403 -> AiAnalysisException.Kind.AUTHORIZATION_FAILED;
+                        case 404 -> AiAnalysisException.Kind.MODEL_NOT_FOUND;
+                        case 429 -> AiAnalysisException.Kind.RATE_LIMITED;
+                        default ->
+                            e.statusCode() >= 500
+                                    ? AiAnalysisException.Kind.PROVIDER_UNAVAILABLE
+                                    : AiAnalysisException.Kind.HTTP_ERROR;
+                    };
             throw new AiAnalysisException(
                     kind, "AWS Bedrock returned an error (HTTP " + e.statusCode() + "): " + e.getMessage(), e);
         } catch (SdkClientException e) {
             throw new AiAnalysisException(
-                    AiAnalysisException.Kind.CONNECTION_FAILED, "Could not call AWS Bedrock: " + e.getMessage(), e);
+                    classifySdkClientException(e), "Could not call AWS Bedrock: " + e.getMessage(), e);
+        } catch (IllegalArgumentException e) {
+            // Region.of(...) and the SDK's own builder validation throw this for malformed input
+            // (e.g. an unparsable region string) rather than a checked exception.
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.INVALID_REGION,
+                    "AWS Bedrock configuration was rejected: " + e.getMessage(),
+                    e);
+        } catch (LinkageError e) {
+            // Belt-and-braces: AiProviderConfig.testConnection and AiAnalysisService.analyze
+            // already carry an outermost LinkageError safety net so nothing from any provider
+            // can ever reach Jenkins uncaught, but catching it here too means a Bedrock-specific
+            // SDK version/classloading mismatch (see aws-sdk.version in pom.xml) gets a properly
+            // categorized, user-facing message instead of the generic outer fallback text.
+            LOGGER.log(Level.WARNING, "AWS Bedrock SDK failed to load/link correctly", e);
+            throw new AiAnalysisException(
+                    AiAnalysisException.Kind.UNKNOWN_PROVIDER_ERROR,
+                    "AWS Bedrock's SDK failed to load correctly ("
+                            + e.getClass().getSimpleName() + "). See the Jenkins log for details.",
+                    e);
         } finally {
             // Closing the assume-role provider stops its background credential-refresh thread;
             // it holds only an in-memory Credentials object obtained from STS for its own
@@ -201,6 +273,24 @@ final class BedrockProvider implements AiProvider {
                 stsClient.close();
             }
         }
+    }
+
+    /**
+     * {@link SdkClientException} covers both "no AWS credentials were found at all" (thrown
+     * lazily by the credential-provider chain when the SDK first tries to sign a request) and
+     * genuine network-level failures (DNS, connection refused, TLS) - two very different,
+     * equally common misconfigurations that deserve different {@link AiAnalysisException.Kind}s
+     * rather than being flattened into one generic message.
+     */
+    private static AiAnalysisException.Kind classifySdkClientException(SdkClientException e) {
+        String message = e.getMessage();
+        if (message != null) {
+            String lower = message.toLowerCase(Locale.ROOT);
+            if (lower.contains("unable to load credentials") || lower.contains("no aws credentials")) {
+                return AiAnalysisException.Kind.CREDENTIALS_MISSING;
+            }
+        }
+        return AiAnalysisException.Kind.CONNECTION_FAILED;
     }
 
     private static String extractText(ConverseResponse response) throws AiAnalysisException {

@@ -11,6 +11,7 @@ import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.domains.Domain;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import hudson.util.FormValidation;
 import hudson.util.Secret;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
 import java.lang.reflect.Field;
@@ -75,6 +76,15 @@ class AiProviderConfigsTest {
         assertNotNull(provider);
     }
 
+    @Test
+    void openAiResolvesNullTokenWhenNoCredentialConfigured(JenkinsRule jenkins) {
+        // OpenAI conceptually requires an API key, but no credential is selected here - this
+        // must resolve to null (not throw), leaving it to the real HTTP round trip (a 401) to
+        // report AUTHENTICATION_FAILED - see OpenAiChatCompletionsProviderTest.
+        OpenAiProviderConfig config = new OpenAiProviderConfig("gpt-4o-mini", null);
+        assertNull(config.resolveApiToken());
+    }
+
     // --- Generic OpenAI-compatible: credential genuinely optional ---
 
     @Test
@@ -99,6 +109,41 @@ class AiProviderConfigsTest {
         OpenAiCompatibleProviderConfig config =
                 new OpenAiCompatibleProviderConfig("http://localhost:8000/v1", "m", "my-cred");
         assertEquals(secretValue, config.resolveApiToken());
+    }
+
+    @Test
+    void openAiCompatibleThrowsConfigurationInvalidWhenModelBlankEndToEnd() throws Exception {
+        // Unlike OpenAiProviderConfig/OllamaProviderConfig (which both default a blank model to
+        // a fixed default in their constructor), the Generic OpenAI-compatible config's model is
+        // plain free text with no default - a blank value here must be caught as
+        // CONFIGURATION_INVALID before any network call, not sent to the server as-is.
+        try (var mock = io.jenkins.plugins.changeinvestigator.testutil.MockAiServer.start(
+                "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}")) {
+            OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig(mock.baseUrl(), "  ", null);
+            AiProvider provider = config.createProvider(objectMapper, 5);
+            io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException ex =
+                    org.junit.jupiter.api.Assertions.assertThrows(
+                            io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException.class,
+                            () -> provider.chatCompletion(
+                                    new io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(
+                    io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException.Kind.CONFIGURATION_INVALID,
+                    ex.getKind());
+            assertNull(mock.lastRequestBody, "must not have sent any request with a blank model");
+        }
+    }
+
+    @Test
+    void openAiCompatibleDescriptorRequiresBaseUrl(JenkinsRule jenkins) {
+        OpenAiCompatibleProviderConfig.DescriptorImpl descriptor = new OpenAiCompatibleProviderConfig.DescriptorImpl();
+        FormValidation blank = descriptor.doCheckBaseUrl(null);
+        assertEquals(FormValidation.Kind.ERROR, blank.kind);
+
+        FormValidation badScheme = descriptor.doCheckBaseUrl("ftp://example.com");
+        assertEquals(FormValidation.Kind.ERROR, badScheme.kind);
+
+        FormValidation ok = descriptor.doCheckBaseUrl("http://localhost:8000/v1");
+        assertEquals(FormValidation.Kind.OK, ok.kind);
     }
 
     // --- Anthropic ---
@@ -212,6 +257,52 @@ class AiProviderConfigsTest {
             provider.chatCompletion(new io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest("s", "u", 0.2));
             assertEquals("Bearer " + secretValue, mock.lastAuthorizationHeader);
         }
+    }
+
+    @Test
+    void ollamaUnreachableHostProducesConnectionFailedNotGenericMessage() {
+        // The "Docker networking" scenario: nothing listening on the configured port must still
+        // be safely categorized (CONNECTION_FAILED/TIMEOUT), never an uncaught exception, even
+        // though "unreachable" here specifically means "wrong side of a container boundary"
+        // rather than a genuinely offline host.
+        OllamaProviderConfig config = new OllamaProviderConfig("http://127.0.0.1:1", "llama3.1");
+        AiProvider provider = config.createProvider(objectMapper, 2);
+        io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException.class,
+                () -> provider.chatCompletion(
+                        new io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest("s", "u", 0.2)));
+        assertTrue(
+                ex.getKind() == io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException.Kind.CONNECTION_FAILED
+                        || ex.getKind() == io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException.Kind.TIMEOUT,
+                ex.getKind().toString());
+    }
+
+    @Test
+    void ollamaDescriptorBlankBaseUrlGivesDockerNetworkingGuidance(JenkinsRule jenkins) {
+        // This actionable guidance (rather than a bare "Connection refused") is what actually
+        // resolves the most common real-world Ollama misconfiguration - a containerized Jenkins
+        // pointed at "localhost" instead of the Docker host - so it must survive this hardening
+        // pass unchanged.
+        OllamaProviderConfig.DescriptorImpl descriptor = new OllamaProviderConfig.DescriptorImpl();
+        FormValidation result = descriptor.doCheckBaseUrl(null);
+        assertEquals(FormValidation.Kind.ERROR, result.kind);
+        assertTrue(
+                result.getMessage().contains("host.docker.internal"),
+                "expected Docker-networking guidance in: " + result.getMessage());
+    }
+
+    @Test
+    void ollamaDescriptorRejectsNonHttpScheme(JenkinsRule jenkins) {
+        OllamaProviderConfig.DescriptorImpl descriptor = new OllamaProviderConfig.DescriptorImpl();
+        FormValidation result = descriptor.doCheckBaseUrl("ollama://host.docker.internal:11434");
+        assertEquals(FormValidation.Kind.ERROR, result.kind);
+    }
+
+    @Test
+    void ollamaDescriptorAcceptsValidHttpBaseUrl(JenkinsRule jenkins) {
+        OllamaProviderConfig.DescriptorImpl descriptor = new OllamaProviderConfig.DescriptorImpl();
+        FormValidation result = descriptor.doCheckBaseUrl("http://host.docker.internal:11434/v1");
+        assertEquals(FormValidation.Kind.OK, result.kind);
     }
 
     // --- Bedrock: optional AmazonWebServicesCredentials-typed credential ---
