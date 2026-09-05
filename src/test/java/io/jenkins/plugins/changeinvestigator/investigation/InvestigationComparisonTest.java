@@ -87,6 +87,13 @@ class InvestigationComparisonTest {
                     FailingHttpStatusCodeException.class, () -> wc.getPage(failed, "change-investigation/?" + query));
             assertEquals(400, error.getStatusCode(), query);
         }
+        HtmlPage normal = wc.getPage(failed, "change-investigation/");
+        assertEquals(200, normal.getWebResponse().getStatusCode());
+        assertFalse(failed.getAction(InvestigationAction.class).hasAiAssessment());
+        var rejectedAiGet = assertThrows(
+                FailingHttpStatusCodeException.class, () -> wc.getPage(failed, "change-investigation/runAi"));
+        assertEquals(404, rejectedAiGet.getStatusCode());
+        assertFalse(failed.getAction(InvestigationAction.class).hasAiAssessment());
         HtmlPage success = wc.getPage(
                 failed, "change-investigation/?baseline=" + first.getNumber() + "&target=" + second.getNumber());
         assertEquals(200, success.getWebResponse().getStatusCode());
@@ -169,6 +176,9 @@ class InvestigationComparisonTest {
             assertThrows(
                     org.springframework.security.access.AccessDeniedException.class,
                     () -> run.getAction(InvestigationAction.class).getView());
+            assertThrows(
+                    org.springframework.security.access.AccessDeniedException.class,
+                    () -> run.getAction(InvestigationAction.class).getTarget());
         }
     }
 }

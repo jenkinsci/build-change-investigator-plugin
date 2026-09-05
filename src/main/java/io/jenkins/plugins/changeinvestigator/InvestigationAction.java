@@ -23,13 +23,20 @@ import org.kohsuke.stapler.verb.POST;
  * a build page never causes an outbound AI request. The result is cached on the action (and
  * persisted with the build) so revisiting the page does not re-trigger analysis.
  */
-public class InvestigationAction implements RunAction2 {
+public class InvestigationAction implements RunAction2, org.kohsuke.stapler.StaplerProxy {
 
-    /** Validate comparison parameters before Jelly rendering so invalid requests return HTTP 400. */
-    public void doIndex(org.kohsuke.stapler.StaplerRequest2 request, StaplerResponse2 response)
-            throws IOException, jakarta.servlet.ServletException {
-        getView();
-        request.getView(this, "index.jelly").forward(request, response);
+    /** Validate page requests before Jelly rendering, without exposing a state-changing web method. */
+    @Override
+    public Object getTarget() {
+        run.getParent().checkPermission(hudson.model.Item.READ);
+        var request = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+        if (request != null) {
+            String path = request.getRestOfPath();
+            if (path.isEmpty() || path.equals("/") || path.equals("/index") || path.equals("/index.jelly")) {
+                getView();
+            }
+        }
+        return this;
     }
 
     private static final Logger LOGGER = Logger.getLogger(InvestigationAction.class.getName());
