@@ -18,7 +18,7 @@ public final class PromptBuilder {
 
             You will be given a JSON "evidence" object containing ONLY facts collected directly \
             from Jenkins: the failed build, the last successful build, source-control changes \
-            between them, and a redacted excerpt of the failure log. Some fields may be marked \
+            within the stated change window, and a redacted excerpt of the current failure log. Some fields may be marked \
             unavailable - Jenkins genuinely does not have that data, it was not omitted from you.
 
             Rules you MUST follow:
@@ -57,8 +57,12 @@ public final class PromptBuilder {
     /** Renders the evidence bundle as the compact JSON document sent as the user message. */
     public String userContent(BuildInvestigationEvidence evidence) {
         ObjectNode root = objectMapper.createObjectNode();
+        root.put(
+                "evidenceReferences",
+                "E1: changes; E2: failureLogExcerpt; E3: failedBuild and previousSuccessfulBuild. Cite only references actually used.");
 
         root.put("jobFullName", evidence.getJobFullName());
+        root.put("evidenceScope", evidence.getAiScope());
 
         ObjectNode failedBuild = root.putObject("failedBuild");
         failedBuild.put("number", evidence.getFailedBuildNumber());
@@ -78,7 +82,12 @@ public final class PromptBuilder {
         root.put(
                 "lastKnownRevision", evidence.hasLastKnownRevision() ? evidence.getLastKnownRevision() : "unavailable");
 
+        root.put("lastKnownRevisionBuildNumber", evidence.getFailedBuildNumber());
         ObjectNode changes = root.putObject("changes");
+        changes.put("baselineAvailable", evidence.isPreviousSuccessfulBuildFound());
+        if (evidence.isPreviousSuccessfulBuildFound())
+            changes.put("baselineBuildNumber", evidence.getPreviousSuccessfulBuildNumber());
+        changes.put("throughBuildNumber", evidence.getChangeWindowEnd());
         changes.put("dataAvailable", evidence.isChangeDataAvailable());
         ArrayNode entriesNode = changes.putArray("entries");
         for (ChangeEntry entry : evidence.getChangeEntries()) {
@@ -92,6 +101,7 @@ public final class PromptBuilder {
         }
 
         ObjectNode log = root.putObject("failureLogExcerpt");
+        log.put("buildNumber", evidence.getFailedBuildNumber());
         log.put("available", evidence.isLogAvailable());
         log.put("truncated", evidence.isLogExcerptTruncated());
         ArrayNode logLines = log.putArray("lines");

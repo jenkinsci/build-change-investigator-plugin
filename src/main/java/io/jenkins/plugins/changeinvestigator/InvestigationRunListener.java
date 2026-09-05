@@ -37,6 +37,16 @@ public class InvestigationRunListener extends RunListener<Run<?, ?>> {
 
     @Override
     public void onCompleted(Run<?, ?> run, TaskListener listener) {
+        if (run.getAction(io.jenkins.plugins.changeinvestigator.investigation.ManifestEvidence.class) == null) {
+            try {
+                run.addAction(io.jenkins.plugins.changeinvestigator.investigation.ManifestEvidence.collect(run));
+                run.save();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (IOException | RuntimeException e) {
+                LOGGER.log(Level.FINE, "Manifest snapshot unavailable for " + run, e);
+            }
+        }
         Result result = run.getResult();
         if (result == null || result.isBetterOrEqualTo(Result.SUCCESS) || result.equals(Result.NOT_BUILT)) {
             return;
@@ -49,8 +59,14 @@ public class InvestigationRunListener extends RunListener<Run<?, ?>> {
             int maxLogChars = ChangeInvestigatorGlobalConfiguration.get().getMaxLogContextChars();
             EvidenceCollector collector = new EvidenceCollector(maxLogChars);
             BuildInvestigationEvidence evidence = collector.collect(run);
-            run.addAction(new InvestigationAction(run, evidence));
-            run.save();
+            InvestigationAction action = new InvestigationAction(run, evidence);
+            run.addAction(action);
+            try {
+                run.save();
+            } catch (IOException | RuntimeException e) {
+                run.removeAction(action);
+                throw e;
+            }
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to persist Build Change Investigator evidence for " + run, e);
         } catch (RuntimeException e) {

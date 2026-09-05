@@ -1,168 +1,283 @@
 <?jelly escape-by-default='true'?>
-<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout" xmlns:f="/lib/form">
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout" xmlns:f="/lib/form" xmlns:t="/lib/hudson">
+  <j:set var="case" value="${it.view}"/>
   <l:layout title="${it.displayName} - ${it.run.fullDisplayName}">
-    <st:include page="sidepanel.jelly" it="${it.run}" optional="true"/>
-    <st:adjunct includes="io.jenkins.plugins.changeinvestigator.InvestigationAction.style"/>
+    <l:side-panel>
+      <details class="bci-native-navigation" open="open">
+        <summary>Build navigation and history</summary>
+        <l:tasks>
+          <j:set var="buildUrl" value="${h.decompose(request2)}"/>
+          <st:include page="tasks.jelly" it="${it.run}" optional="true"/>
+          <st:include page="actions.jelly" it="${it.run}" optional="true"/>
+          <t:actions actions="${it.run.transientActions}"/>
+        </l:tasks>
+        <j:forEach var="widget" items="${it.run.parent.widgets}">
+          <st:include it="${widget}" page="index.jelly"/>
+        </j:forEach>
+      </details>
+    </l:side-panel>
+    <st:adjunct includes="io.jenkins.plugins.changeinvestigator.InvestigationAction.style,io.jenkins.plugins.changeinvestigator.InvestigationAction.interaction"/>
     <l:main-panel>
-      <h1>Build Change Investigation</h1>
-      <p class="jenkins-!-color-secondary">
-        Which change between the last successful build and this build most likely caused the regression?
-        Observed evidence below comes directly from Jenkins. The AI assessment (if run) is a separate,
-        clearly-marked interpretation - never treat it as fact on its own.
-      </p>
-
-      <div class="jenkins-!-margin-bottom-3">
-        <h2>Build comparison</h2>
-        <div class="bci-comparison">
-          <l:card title="Failed build">
+      <div class="bci">
+        <div class="bci-heading">
+          <div>
+            <div class="bci-label">BUILD CHANGE INVESTIGATION</div>
+            <h1>Build #${case.target} <span class="bci-result" data-result="${case.evidence.failedBuildResult}">${case.evidence.failedBuildResult}</span>
+            </h1>
+          </div>
+          <div class="bci-actions">
+            <button type="button" class="jenkins-button" data-bci-open="bci-compare">Compare builds</button>
+            <button type="button" class="jenkins-button" id="bci-copy">Copy investigation</button>
+          </div>
+        </div>
+        <section class="bci-boundary" id="bci-e3" data-comparison="${case.comparison}">
+          <div class="bci-window">
             <div>
-              <a href="${rootURL}/${it.evidence.failedBuildUrl}">#${it.evidence.failedBuildNumber}</a>
-              - ${it.evidence.failedBuildResult}
+              <span class="bci-label">${case.comparison ? 'BASELINE' : 'LAST KNOWN GOOD'}</span>
+              <div class="bci-build bci-good">
+                <j:choose>
+                  <j:when test="${case.baseline gt 0}">
+                    <a href="${rootURL}/${it.run.parent.url}${case.baseline}/">#${case.baseline}</a>
+                  </j:when>
+                  <j:otherwise>Unavailable</j:otherwise>
+                </j:choose>
+              </div>
             </div>
-            <div class="jenkins-!-color-secondary">Duration: ${it.evidence.failedBuildDurationString}</div>
-          </l:card>
-          <j:choose>
-            <j:when test="${it.evidence.previousSuccessfulBuildFound}">
-              <l:card title="Last successful build">
-                <div>
-                  <a href="${rootURL}/${it.evidence.previousSuccessfulBuildUrl}">#${it.evidence.previousSuccessfulBuildNumber} - SUCCESS</a>
+            <div class="bci-delta">${case.changes.size()} change entries · ${case.fileCount} files<br/>changes introduced →</div>
+            <j:if test="${case.history.verified and !case.comparison}">
+              <div>
+                <span class="bci-label">FIRST BAD</span>
+                <div class="bci-build">
+                  <a href="${rootURL}/${it.run.parent.url}${case.history.firstBad}/">#${case.history.firstBad}</a>
                 </div>
-              </l:card>
-            </j:when>
-            <j:otherwise>
-              <l:card title="Last successful build">
-                <div class="jenkins-!-color-secondary">None found</div>
-              </l:card>
-            </j:otherwise>
-          </j:choose>
-          <l:card title="Agent">
+              </div>
+              <span>→</span>
+            </j:if>
             <div>
-              <j:choose>
-                <j:when test="${it.evidence.nodeInfoAvailable}">${it.evidence.nodeName}</j:when>
-                <j:otherwise><span class="jenkins-!-color-secondary">unavailable</span></j:otherwise>
-              </j:choose>
+              <span class="bci-label">${case.comparison ? 'TARGET BUILD' : 'CURRENT FAILURE'}</span>
+              <div class="bci-build">
+                <a href="${rootURL}/${it.run.parent.url}${case.target}/">#${case.target}</a>
+              </div>
             </div>
-          </l:card>
-        </div>
-      </div>
-
-      <j:if test="${!empty(it.evidence.warnings)}">
-        <div class="jenkins-!-margin-bottom-3 bci-evidence-notes">
-          <l:notice title="Evidence notes" icon="symbol-warning-outline">
-            <ul>
-              <j:forEach var="w" items="${it.evidence.warnings}">
-                <li>${w}</li>
+          </div>
+          <div class="bci-window-note">${case.comparison ? 'Selected comparison window' : (case.history.verified ? 'Verified regression window' : 'First bad not yet narrowed')}: ${case.windowLabel} <details>
+              <summary>How this boundary was established</summary>
+              <p>${case.history.explanation}</p>
+            </details>
+          </div>
+        </section>
+        <div class="bci-layout">
+          <article>
+            <section id="bci-e2">
+              <div class="bci-section-head">
+                <span class="bci-label">FAILURE SIGNAL</span>
+                <span class="bci-source">E2 · OBSERVED</span>
+              </div>
+              <h2>${case.signalTitle}</h2>
+              <j:if test="${!empty(case.signal.stage)}">
+                <p class="bci-muted">Stage <strong>${case.signal.stage}</strong>
+                </p>
+              </j:if>
+              <div class="bci-failure">
+                <strong>${case.signal.location}</strong>
+                <pre>${case.signalText}</pre>
+              </div>
+              <div class="bci-support">
+                <details>
+                  <summary>Show supporting lines</summary>
+                  <pre>${case.signal.supportingText}</pre>
+                </details>
+                <details>
+                  <summary>Show surrounding log</summary>
+                  <pre>${case.evidence.logExcerptText}</pre>
+                  <p class="bci-muted">Bounded, redacted excerpt. ${case.evidence.logExcerptTruncated ? 'Retained excerpt is truncated.' : ''}</p>
+                </details>
+                <a href="${rootURL}/${it.run.parent.url}${case.target}/console">Open full console output ↗</a>
+              </div>
+            </section>
+            <section class="bci-change" id="bci-e1">
+              <div class="bci-ranking">
+                <strong>Most relevant · ${case.relevantCount}</strong>
+                <button type="button" data-bci-open="bci-changes">Possibly related · ${case.possibleCount}</button>
+                <button type="button" data-bci-open="bci-changes">Other · ${case.otherCount} / Show all ${case.fileCount}</button>
+              </div>
+              <j:if test="${!case.evidence.changeDataAvailable}">
+                <h2>SCM change evidence unavailable for this build.</h2>
+                <p>No regression correlation can be made without SCM evidence.</p>
+              </j:if>
+              <j:if test="${!case.strongRelationship and case.evidence.failedBuildResult ne 'SUCCESS'}">
+                <h2>No change has a strong direct relationship to this failure.</h2>
+                <p class="bci-muted">Insufficient evidence to name a suspect.</p>
+                <p class="bci-unmatched">
+                  <j:forEach var="change" items="${case.ranked}" varStatus="loop">
+                    <j:if test="${loop.index lt 3}">
+                      <span>${change.path}</span>
+                    </j:if>
+                  </j:forEach>
+                </p>
+                <p>
+                  <strong>Inspect first:</strong> service inputs/runtime environment.</p>
+              </j:if>
+              <j:forEach var="change" items="${case.ranked}" varStatus="loop">
+                <div class="bci-record" data-bci-record="${loop.index}" hidden="${loop.index ne 0 or !case.strongRelationship ? 'hidden' : null}">
+                  <div class="bci-section-head">
+                    <strong class="bci-path">${change.path}</strong>
+                    <span class="bci-source">E1 · OBSERVED</span>
+                  </div>
+                  <p class="bci-muted bci-commit">${change.commit} · ${change.author}</p>
+                  <details class="bci-message">
+                    <summary>Commit message</summary>
+                    <p>${change.message}</p>
+                  </details>
+                  <div class="bci-comparison">
+                    <div>
+                      <span class="bci-label">${case.comparison ? 'BASELINE' : 'KNOWN GOOD'} #${case.baseline}</span>
+                      <pre>${case.beforeValue(change)}</pre>
+                      <small>${case.hasBefore(change) ? "Build-time manifest observation" : "Previous file contents are not available."}</small>
+                    </div>
+                    <div>
+                      <span class="bci-label">${case.history.verified and !case.comparison ? 'FIRST BAD' : 'TARGET'} #${case.windowEnd}</span>
+                      <pre>${case.afterValue(change)}</pre>
+                      <small>${case.hasAfter(change) ? "Build-time manifest observation" : "SCM revision:"} ${case.hasAfter(change) ? "" : change.commit}</small>
+                    </div>
+                  </div>
+                  <div class="bci-source">DERIVED · ${change.strength}</div>
+                  <p>${change.reason}</p>
+                  <p class="bci-muted">
+                    <strong>Limitation:</strong> ${change.limitation}</p>
+                  <a class="jenkins-button jenkins-button--primary" href="${rootURL}/${it.run.parent.url}${change.buildNumber}/changes">${change.nextCheck} →</a>
+                </div>
               </j:forEach>
-            </ul>
-          </l:notice>
-        </div>
-      </j:if>
-
-      <div class="jenkins-!-margin-bottom-3">
-        <h2>Changes since last success</h2>
-        <j:choose>
-          <j:when test="${empty(it.evidence.changeEntries)}">
-            <p class="jenkins-!-color-secondary">No change entries available.</p>
-          </j:when>
-          <j:otherwise>
-            <table class="jenkins-table">
-              <thead>
-                <tr><th>Build</th><th>Revision</th><th>Author</th><th>Message</th><th>Files</th></tr>
-              </thead>
-              <tbody>
-                <j:forEach var="c" items="${it.evidence.changeEntries}">
-                  <tr>
-                    <td>#${c.fromBuildNumber}</td>
-                    <td>
-                      <j:choose>
-                        <j:when test="${c.hasCommitId()}">${c.commitId}</j:when>
-                        <j:otherwise><span class="jenkins-!-color-secondary">unavailable</span></j:otherwise>
-                      </j:choose>
-                    </td>
-                    <td>${c.author}</td>
-                    <td>${c.shortMessage}</td>
-                    <td>
-                      <j:choose>
-                        <j:when test="${empty(c.affectedFiles)}"><span class="jenkins-!-color-secondary">unavailable</span></j:when>
-                        <j:otherwise>${c.affectedFiles.size()} file(s)</j:otherwise>
-                      </j:choose>
-                    </td>
-                  </tr>
-                </j:forEach>
-              </tbody>
-            </table>
-          </j:otherwise>
-        </j:choose>
-      </div>
-
-      <div class="jenkins-!-margin-bottom-3">
-        <h2>Failure log excerpt</h2>
-        <j:choose>
-          <j:when test="${it.evidence.logAvailable}">
-            <pre>${it.evidence.logExcerptText}</pre>
-            <j:if test="${it.evidence.logExcerptTruncated}">
-              <p class="jenkins-!-color-secondary">Excerpt truncated to the configured maximum size.</p>
+            </section>
+            <j:if test="${case.history.similarBuild gt 0 and !case.comparison}">
+              <p class="bci-similar">
+                <strong>Seen before</strong> · <a href="${rootURL}/${it.run.parent.url}${case.history.similarBuild}/change-investigation/">#${case.history.similarBuild} · Same failure signature</a>
+                <br/>
+                <span class="bci-muted">Context, not proof of the same cause.</span>
+              </p>
             </j:if>
-          </j:when>
-          <j:otherwise>
-            <p class="jenkins-!-color-secondary">No log excerpt available.</p>
-          </j:otherwise>
-        </j:choose>
-      </div>
-
-      <div>
-        <h2>AI assessment</h2>
-
-        <j:choose>
-          <j:when test="${it.hasAiAssessment() and it.aiAssessment.completed}">
-            <p>
-              <strong>Confidence:</strong>
-              <span class="bci-confidence-${it.aiAssessment.confidenceLabel.toLowerCase()}">
-                ${it.aiAssessment.confidenceLabel}
-              </span>
-            </p>
-            <j:if test="${it.aiAssessment.insufficientEvidence}">
-              <p><em>The model reported that the available evidence was insufficient for a confident assessment.</em></p>
-            </j:if>
-            <p><strong>Most likely regression:</strong><br/>${it.aiAssessment.mostLikelyCause}</p>
-            <p><strong>Why:</strong><br/>${it.aiAssessment.reasoning}</p>
-            <j:if test="${!empty(it.aiAssessment.supportingEvidence)}">
-              <p><strong>Supporting evidence cited:</strong></p>
+            <details class="bci-evidence">
+              <summary>Evidence record · E1 Change · E2 Failure · E3 Build comparison</summary>
+              <p>${case.history.explanation}</p>
+              <j:if test="${case.comparison}">
+                <p>Baseline failure signal: ${case.baselineSignal == null ? 'No retained structured failure evidence.' : case.baselineSignal.text}</p>
+                <p>Target failure signal: ${case.signal.text}</p>
+              </j:if>
               <ul>
-                <j:forEach var="e" items="${it.aiAssessment.supportingEvidence}"><li>${e}</li></j:forEach>
+                <j:forEach var="warning" items="${case.evidence.warnings}">
+                  <li>${warning}</li>
+                </j:forEach>
               </ul>
+              <a href="${rootURL}/${it.run.parent.url}${case.target}/changes">Inspect native SCM changes</a>
+            </details>
+          </article>
+          <j:set var="ai" value="${it.aiPresentation}"/>
+          <aside class="bci-ai">
+            <span class="bci-label">OPTIONAL COMMENTARY</span>
+            <h2>AI interpretation</h2>
+            <j:if test="${!case.comparison}">
+              <p class="bci-ai-scope">${ai.scope}</p>
             </j:if>
-            <j:if test="${!empty(it.aiAssessment.recommendedChecks)}">
-              <p><strong>Recommended checks:</strong></p>
-              <ol>
-                <j:forEach var="chk" items="${it.aiAssessment.recommendedChecks}"><li>${chk}</li></j:forEach>
-              </ol>
+            <j:choose>
+              <j:when test="${case.comparison}">
+                <j:choose>
+                  <j:when test="${case.evidence.failedBuildResult eq 'SUCCESS'}">
+                    <p>No failure interpretation is available for the successful target.</p>
+                  </j:when>
+                  <j:otherwise>
+                    <p>Available on the target build's saved investigation.</p>
+                    <a href="${rootURL}/${it.run.parent.url}${case.target}/change-investigation/">Open target investigation</a>
+                  </j:otherwise>
+                </j:choose>
+              </j:when>
+              <j:when test="${ai.hasAssessment() and ai.assessment.completed}">
+                <p>Completed</p>
+                <h3>Likely explanation</h3>
+                <p>${ai.assessment.mostLikelyCause}</p>
+                <details>
+                  <summary>Interpretation reasoning</summary>
+                  <p>${ai.assessment.reasoning}</p>
+                </details>
+                <h3>Evidence referenced</h3>
+                <p>
+                  <j:forEach var="ref" items="${ai.references}">
+                    <a href="#bci-${ref.toLowerCase()}">${ref}</a>
+                  </j:forEach>
+                  <j:if test="${empty(ai.references)}">No structured evidence references returned.</j:if>
+                </p>
+                <ul>
+                  <j:forEach var="item" items="${ai.assessment.supportingEvidence}">
+                    <li>${item}</li>
+                  </j:forEach>
+                </ul>
+                <h3>Recommended checks</h3>
+                <ol>
+                  <j:forEach var="check" items="${ai.assessment.recommendedChecks}">
+                    <li>${check}</li>
+                  </j:forEach>
+                </ol>
+                <p class="bci-provider">Provider: ${ai.assessment.providerUsed}<br/>Model: ${ai.assessment.modelUsed}</p>
+              </j:when>
+              <j:when test="${ai.hasAssessment() and ai.assessment.failed}">
+                <p>AI analysis unavailable</p>
+                <p>${ai.assessment.errorMessage}</p>
+                <p>The deterministic investigation is unchanged.</p>
+              </j:when>
+              <j:otherwise>
+                <p>Not run</p>
+                <p>Observed and derived investigation is available independently.</p>
+              </j:otherwise>
+            </j:choose>
+            <p class="bci-interpretation">Interpretation — not observed Jenkins fact.</p>
+            <j:if test="${!case.comparison and it.canRunAi() and it.isAiEnabledGlobally()}">
+              <f:form method="post" action="runAi" name="runAi">
+                <f:submit value="${ai.hasAssessment() ? 'Retry AI Analysis' : 'Run AI Analysis'}"/>
+              </f:form>
             </j:if>
-            <p class="jenkins-!-color-secondary">Provider: ${it.aiAssessment.providerUsed} &#183; Model: ${it.aiAssessment.modelUsed}</p>
-          </j:when>
-          <j:when test="${it.hasAiAssessment() and it.aiAssessment.failed}">
-            <l:notice title="AI unavailable - showing observed evidence only" icon="symbol-warning-outline">
-              ${it.aiAssessment.errorMessage}
-            </l:notice>
-          </j:when>
-          <j:when test="${it.hasAiAssessment() and it.aiAssessment.disabled}">
-            <l:notice title="AI analysis is disabled by the Jenkins administrator" icon="symbol-information-circle-outline plugin-ionicons-api"/>
-          </j:when>
-          <j:otherwise>
-            <l:notice title="AI analysis has not been run yet for this build" icon="symbol-information-circle-outline plugin-ionicons-api"/>
-          </j:otherwise>
-        </j:choose>
-
-        <j:if test="${it.canRunAi() and it.isAiEnabledGlobally()}">
-          <f:form method="post" action="runAi" name="runAi">
-            <f:submit value="${it.hasAiAssessment() ? 'Re-run AI Analysis' : 'Run AI Analysis'}"/>
-          </f:form>
-        </j:if>
-        <j:if test="${it.canRunAi() and !it.isAiEnabledGlobally()}">
-          <p class="jenkins-!-color-secondary">
-            Enable AI analysis under "Manage Jenkins &#8594; System" to use this feature.
-          </p>
-        </j:if>
+            <j:if test="${!it.isAiEnabledGlobally()}">
+              <p>AI analysis is disabled by the administrator.</p>
+            </j:if>
+          </aside>
+        </div>
+        <textarea id="bci-bundle" hidden="hidden" readonly="readonly">${case.copyText}</textarea>
+        <p id="bci-copy-status" role="status">
+        </p>
+        <dialog id="bci-compare">
+          <div class="bci-dialog-head">
+            <h2>Compare builds</h2>
+            <button type="button" data-bci-close="true" aria-label="Close">×</button>
+          </div>
+          <p>Use the same investigation with a different build boundary. Baseline must precede target, within 100 builds.</p>
+          <form method="get">
+            <label>Baseline <select name="baseline">
+                <j:forEach var="build" items="${it.comparisonBuilds}">
+                  <option value="${build.number}" selected="${build.number eq case.baseline ? 'selected' : null}">#${build.number} · ${build.result}</option>
+                </j:forEach>
+              </select>
+            </label>
+            <label>Target <select name="target">
+                <j:forEach var="build" items="${it.comparisonBuilds}">
+                  <option value="${build.number}" selected="${build.number eq case.target ? 'selected' : null}">#${build.number} · ${build.result}</option>
+                </j:forEach>
+              </select>
+            </label>
+            <button class="jenkins-button jenkins-button--primary" type="submit">Compare</button>
+          </form>
+        </dialog>
+        <dialog id="bci-changes">
+          <div class="bci-dialog-head">
+            <h2>All retained changes</h2>
+            <button type="button" data-bci-close="true" aria-label="Close">×</button>
+          </div>
+          <p>Ranking reduces noise; every retained path remains accessible. Large histories may be capped; inspect evidence notes and native SCM history.</p>
+          <j:forEach var="change" items="${case.ranked}" varStatus="loop">
+            <button class="bci-choice" type="button" data-bci-select="${loop.index}">
+              <strong>${change.path}</strong>
+              <span>${change.group} · ${change.commit}</span>
+              <small>${change.reason}</small>
+            </button>
+          </j:forEach>
+        </dialog>
       </div>
     </l:main-panel>
   </l:layout>
