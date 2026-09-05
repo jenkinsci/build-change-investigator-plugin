@@ -255,7 +255,10 @@ final class BedrockProvider implements AiProvider {
             // can ever reach Jenkins uncaught, but catching it here too means a Bedrock-specific
             // SDK version/classloading mismatch (see aws-sdk.version in pom.xml) gets a properly
             // categorized, user-facing message instead of the generic outer fallback text.
-            LOGGER.log(Level.WARNING, "AWS Bedrock SDK failed to load/link correctly", e);
+            LOGGER.log(
+                    Level.WARNING,
+                    "AWS Bedrock SDK failed to load/link correctly ({0})",
+                    e.getClass().getName());
             throw new AiAnalysisException(
                     AiAnalysisException.Kind.UNKNOWN_PROVIDER_ERROR,
                     "AWS Bedrock's SDK failed to load correctly ("

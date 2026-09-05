@@ -16,12 +16,16 @@ The approved comparison-led layout is retained. Jenkins owns the navigation task
 
 ## Compatibility and safety
 
-Existing provider configuration and adapter implementations are unchanged. AI remains explicit POST with the existing permission check and provider failure handling. Evidence reference IDs are shown only when returned in supporting evidence; older responses without IDs still retain their textual citations.
+The released provider configuration, SDK alignment and error taxonomy are preserved. Public AI failure messages use category-specific guidance; raw provider diagnostics are excluded from persisted failures and plugin logs. AI remains explicit POST with the existing permission check. Evidence reference IDs are shown only when returned in supporting evidence; older responses without IDs retain their textual citations.
 
 Comparison requires Item.READ and never accepts a job name from the request. Copy uses an escaped, bounded plain-text case bundle rather than full console output; clipboard denial exposes a selectable fallback. SCM/log/provider output remains escaped by Jelly, with no raw HTML injection.
 
 Older investigations without the new case fields derive a conservative view from stored evidence and retain unknown history. No migration triggers an external call. Build-time snapshots are separately persisted; missing snapshots preserve the approved comparison layout with an explicit evidence gap.
 
+## AI evidence scope
+
+Verified first-bad investigations submit a copy of the saved evidence containing the same narrowed changes displayed by the deterministic investigation. The failure signal and build metadata remain from the current build, explicitly identified in the prompt and UI. Original evidence is preserved. Historical assessments retain their original full-window scope until rerun. The page reads assessment, scope and references as one immutable snapshot, including while a retry is pending. Arbitrary comparisons do not relabel or change the saved automatic assessment.
+
 ## Decision gate
 
-No production checkout files have been staged or committed. Disposable demo repositories contain synthetic commits solely to exercise actual Jenkins changelogs. No production push, PR or merge is authorized by this task. Runtime screenshots and the final validation report are required before approval.
+The frozen implementation was checkpointed before integration with hardened master. Disposable demo repositories contain synthetic commits solely to exercise actual Jenkins changelogs. The combined implementation requires runtime screenshots and validation review before a pull request or release.

@@ -45,6 +45,7 @@ public final class BuildInvestigationEvidence implements Serializable {
 
     private final List<String> warnings;
     private final long collectedAtMillis;
+    private int changeWindowEnd;
 
     private BuildInvestigationEvidence(Builder b) {
         this.jobFullName = b.jobFullName;
@@ -69,6 +70,40 @@ public final class BuildInvestigationEvidence implements Serializable {
         this.logLinesScanned = b.logLinesScanned;
         this.warnings = Collections.unmodifiableList(new ArrayList<>(b.warnings));
         this.collectedAtMillis = b.collectedAtMillis;
+    }
+
+    /** Projects saved changes without changing the original evidence or reading SCM. */
+    public BuildInvestigationEvidence forChangeWindow(List<ChangeEntry> entries, int end) {
+        Builder b = builder()
+                .jobFullName(jobFullName)
+                .jobUrl(jobUrl)
+                .failedBuildNumber(failedBuildNumber)
+                .failedBuildResult(failedBuildResult)
+                .failedBuildUrl(failedBuildUrl)
+                .failedBuildStartTimeMillis(failedBuildStartTimeMillis)
+                .failedBuildDurationMillis(failedBuildDurationMillis)
+                .failedBuildDurationString(failedBuildDurationString)
+                .node(nodeInfoAvailable ? nodeName : null)
+                .changeEntries(entries, changeDataAvailable)
+                .lastKnownRevision(lastKnownRevision)
+                .log(logExcerpt, logAvailable, logExcerptTruncated, logLinesScanned);
+        if (previousSuccessfulBuildFound)
+            b.previousSuccessfulBuild(previousSuccessfulBuildNumber, previousSuccessfulBuildUrl);
+        warnings.forEach(b::addWarning);
+        b.collectedAtMillis = collectedAtMillis;
+        BuildInvestigationEvidence projected = b.build();
+        projected.changeWindowEnd = end;
+        return projected;
+    }
+
+    public int getChangeWindowEnd() {
+        return changeWindowEnd > 0 ? changeWindowEnd : failedBuildNumber;
+    }
+
+    public String getAiScope() {
+        return "Changes "
+                + (previousSuccessfulBuildFound ? "#" + previousSuccessfulBuildNumber : "baseline unavailable") + " → #"
+                + getChangeWindowEnd() + "; failure signal and build metadata from #" + failedBuildNumber + ".";
     }
 
     public String getJobFullName() {

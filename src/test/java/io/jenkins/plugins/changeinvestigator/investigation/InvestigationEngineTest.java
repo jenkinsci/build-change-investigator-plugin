@@ -231,6 +231,119 @@ class InvestigationEngineTest {
         assertTrue(copy.length() < 6001);
     }
 
+    @Test
+    void similarRequiresExactLineAndExceptionAndChoosesMostRecentMatch() {
+        var current = signal("java.lang.IllegalStateException: failure", " at com.acme.Service.run(Service.java:12)");
+        var changedLine =
+                signal("java.lang.IllegalStateException: failure", " at com.acme.Service.run(Service.java:13)");
+        var changedType =
+                signal("java.lang.IllegalArgumentException: failure", " at com.acme.Service.run(Service.java:12)");
+        for (var other : List.of(changedLine, changedType)) {
+            assertEquals(
+                    0,
+                    HistoryEvidence.analyze(
+                                    List.of(
+                                            obs(3, "FAILURE", current),
+                                            obs(2, "SUCCESS", current),
+                                            obs(1, "FAILURE", other)),
+                                    3,
+                                    current)
+                            .getSimilarBuild());
+        }
+        var history = HistoryEvidence.analyze(
+                List.of(
+                        obs(6, "FAILURE", current),
+                        obs(5, "SUCCESS", current),
+                        obs(4, "FAILURE", current),
+                        obs(3, "SUCCESS", current),
+                        obs(2, "FAILURE", current)),
+                6,
+                current);
+        assertEquals(4, history.getSimilarBuild());
+        var generic = signal("Build failed");
+        assertEquals(
+                0,
+                HistoryEvidence.analyze(
+                                List.of(
+                                        obs(3, "FAILURE", generic),
+                                        obs(2, "SUCCESS", generic),
+                                        obs(1, "FAILURE", generic)),
+                                3,
+                                generic)
+                        .getSimilarBuild());
+    }
+
+    @Test
+    void copyUsesVerifiedWindowManifestValuesAndSelectedRevision() {
+        var evidence = BuildInvestigationEvidence.builder()
+                .failedBuildNumber(3)
+                .failedBuildResult("FAILURE")
+                .previousSuccessfulBuild(1, "job/demo/1/")
+                .changeEntries(List.of(change("payment-common/pom.xml")), true)
+                .log(
+                        List.of(
+                                "> Task :payment-common:integrationTest FAILED",
+                                "java.lang.NoSuchMethodError: options()"),
+                        true,
+                        false,
+                        2)
+                .build();
+        var investigation = new InvestigationCase(evidence, new HistoryEvidence(2, 0, "Verified"), 1, false, null);
+        investigation.attachManifests(
+                new ManifestEvidence(java.util.Map.of("payment-common/pom.xml", "module 2.3.1")),
+                new ManifestEvidence(java.util.Map.of("payment-common/pom.xml", "module 2.4.0")));
+        String copy = investigation.getCopyText();
+        for (String expected : List.of(
+                "Build #3",
+                "Last good: #1",
+                "First bad: #2",
+                "#1 → #2",
+                "NoSuchMethodError",
+                "payment-common/pom.xml",
+                "a254c24",
+                "Before: module 2.3.1",
+                "After: module 2.4.0",
+                "Evidence:",
+                "Limitation:",
+                "Suggested check:")) {
+            assertTrue(copy.contains(expected), expected + " missing from " + copy);
+        }
+        assertTrue(copy.length() <= 6000);
+        assertFalse(copy.contains("AI interpretation"));
+    }
+
+    @Test
+    void historyAcceptsSuccessfulBoundaryAtExactlyOneHundredObservations() {
+        var failure = signal("java.lang.IllegalStateException: failure");
+        List<HistoryEvidence.Observation> withinBound = new ArrayList<>();
+        for (int number = 100; number >= 2; number--) withinBound.add(obs(number, "FAILURE", failure));
+        withinBound.add(obs(1, "SUCCESS", failure));
+        assertEquals(2, HistoryEvidence.analyze(withinBound, 100, failure).getFirstBad());
+        List<HistoryEvidence.Observation> beyondBound = new ArrayList<>();
+        for (int number = 101; number >= 2; number--) beyondBound.add(obs(number, "FAILURE", failure));
+        beyondBound.add(obs(1, "SUCCESS", failure));
+        assertFalse(HistoryEvidence.analyze(beyondBound, 101, failure).isVerified());
+    }
+
+    @Test
+    void historyRequiresSuccessAndEveryPriorFailureSignature() {
+        var failure = signal("java.lang.IllegalStateException: failure");
+        assertEquals(
+                2,
+                HistoryEvidence.analyze(List.of(obs(2, "FAILURE", failure), obs(1, "SUCCESS", failure)), 2, failure)
+                        .getFirstBad());
+        assertFalse(HistoryEvidence.analyze(List.of(obs(2, "FAILURE", failure), obs(1, "FAILURE", failure)), 2, failure)
+                .isVerified());
+        assertFalse(HistoryEvidence.analyze(
+                        List.of(
+                                obs(3, "FAILURE", failure),
+                                new HistoryEvidence.Observation(2, "FAILURE", ""),
+                                obs(1, "SUCCESS", failure)),
+                        3,
+                        failure)
+                .isVerified());
+    }
+
     private HistoryEvidence.Observation obs(int n, String result, FailureSignal s) {
         return new HistoryEvidence.Observation(n, result, s.getSignature());
     }

@@ -221,6 +221,9 @@
   margin:6px 0;
   overflow-wrap:anywhere
 }
+.bci-ai p{
+  overflow-wrap:anywhere
+}
 .bci-ai .bci-provider{
   font-size:11px;
   border-top:1px solid var(--bci-line);

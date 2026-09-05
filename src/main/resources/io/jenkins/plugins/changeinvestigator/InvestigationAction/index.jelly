@@ -171,9 +171,13 @@
               <a href="${rootURL}/${it.run.parent.url}${case.target}/changes">Inspect native SCM changes</a>
             </details>
           </article>
+          <j:set var="ai" value="${it.aiPresentation}"/>
           <aside class="bci-ai">
             <span class="bci-label">OPTIONAL COMMENTARY</span>
             <h2>AI interpretation</h2>
+            <j:if test="${!case.comparison}">
+              <p class="bci-ai-scope">${ai.scope}</p>
+            </j:if>
             <j:choose>
               <j:when test="${case.comparison}">
                 <j:choose>
@@ -186,37 +190,37 @@
                   </j:otherwise>
                 </j:choose>
               </j:when>
-              <j:when test="${it.hasAiAssessment() and it.aiAssessment.completed}">
+              <j:when test="${ai.hasAssessment() and ai.assessment.completed}">
                 <p>Completed</p>
                 <h3>Likely explanation</h3>
-                <p>${it.aiAssessment.mostLikelyCause}</p>
+                <p>${ai.assessment.mostLikelyCause}</p>
                 <details>
                   <summary>Interpretation reasoning</summary>
-                  <p>${it.aiAssessment.reasoning}</p>
+                  <p>${ai.assessment.reasoning}</p>
                 </details>
                 <h3>Evidence referenced</h3>
                 <p>
-                  <j:forEach var="ref" items="${it.aiReferences}">
+                  <j:forEach var="ref" items="${ai.references}">
                     <a href="#bci-${ref.toLowerCase()}">${ref}</a>
                   </j:forEach>
-                  <j:if test="${empty(it.aiReferences)}">No structured evidence references returned.</j:if>
+                  <j:if test="${empty(ai.references)}">No structured evidence references returned.</j:if>
                 </p>
                 <ul>
-                  <j:forEach var="item" items="${it.aiAssessment.supportingEvidence}">
+                  <j:forEach var="item" items="${ai.assessment.supportingEvidence}">
                     <li>${item}</li>
                   </j:forEach>
                 </ul>
                 <h3>Recommended checks</h3>
                 <ol>
-                  <j:forEach var="check" items="${it.aiAssessment.recommendedChecks}">
+                  <j:forEach var="check" items="${ai.assessment.recommendedChecks}">
                     <li>${check}</li>
                   </j:forEach>
                 </ol>
-                <p class="bci-provider">Provider: ${it.aiAssessment.providerUsed}<br/>Model: ${it.aiAssessment.modelUsed}</p>
+                <p class="bci-provider">Provider: ${ai.assessment.providerUsed}<br/>Model: ${ai.assessment.modelUsed}</p>
               </j:when>
-              <j:when test="${it.hasAiAssessment() and it.aiAssessment.failed}">
+              <j:when test="${ai.hasAssessment() and ai.assessment.failed}">
                 <p>AI analysis unavailable</p>
-                <p>${it.aiAssessment.errorMessage}</p>
+                <p>${ai.assessment.errorMessage}</p>
                 <p>The deterministic investigation is unchanged.</p>
               </j:when>
               <j:otherwise>
@@ -227,7 +231,7 @@
             <p class="bci-interpretation">Interpretation — not observed Jenkins fact.</p>
             <j:if test="${!case.comparison and it.canRunAi() and it.isAiEnabledGlobally()}">
               <f:form method="post" action="runAi" name="runAi">
-                <f:submit value="${it.hasAiAssessment() ? 'Retry AI Analysis' : 'Run AI Analysis'}"/>
+                <f:submit value="${ai.hasAssessment() ? 'Retry AI Analysis' : 'Run AI Analysis'}"/>
               </f:form>
             </j:if>
             <j:if test="${!it.isAiEnabledGlobally()}">

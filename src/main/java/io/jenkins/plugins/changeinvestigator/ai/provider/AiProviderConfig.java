@@ -7,6 +7,7 @@ import hudson.util.FormValidation;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
+import io.jenkins.plugins.changeinvestigator.ai.SafeAiFailure;
 import java.io.Serializable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -59,9 +60,14 @@ public abstract class AiProviderConfig extends AbstractDescribableImpl<AiProvide
                     .chatCompletion(new AiAnalysisRequest(TEST_SYSTEM_PROMPT, TEST_USER_PROMPT, 0.0));
             return FormValidation.ok("Connection succeeded.");
         } catch (AiAnalysisException e) {
-            return FormValidation.error("Connection failed (" + e.getKind() + "): " + e.getMessage());
+            return FormValidation.error(
+                    "Connection failed (" + e.getKind() + "): " + SafeAiFailure.describe(e.getKind()));
         } catch (RuntimeException e) {
-            return FormValidation.error("Connection failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            LOGGER.log(
+                    Level.WARNING,
+                    "Unexpected Test Connection error ({0})",
+                    e.getClass().getName());
+            return FormValidation.error(SafeAiFailure.describe(AiAnalysisException.Kind.UNKNOWN_PROVIDER_ERROR));
         } catch (LinkageError e) {
             // This is the outermost Jenkins-facing safety boundary for Test Connection: an Error
             // (not an Exception) from a provider SDK failing to link at runtime - most notably
@@ -70,9 +76,11 @@ public abstract class AiProviderConfig extends AbstractDescribableImpl<AiProvide
             // is not caught by either clause above. Without this clause it propagates straight
             // through Stapler and renders Jenkins' generic "Oops" page instead of a safe,
             // in-form validation error.
-            LOGGER.log(Level.WARNING, "AI provider failed to load/link correctly during Test Connection", e);
-            return FormValidation.error("Connection failed: an internal provider error occurred ("
-                    + e.getClass().getSimpleName() + "). See the Jenkins log for details.");
+            LOGGER.log(
+                    Level.WARNING,
+                    "AI provider failed to load/link correctly during Test Connection ({0})",
+                    e.getClass().getName());
+            return FormValidation.error(SafeAiFailure.describe(AiAnalysisException.Kind.UNKNOWN_PROVIDER_ERROR));
         }
     }
 

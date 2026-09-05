@@ -38,6 +38,7 @@ public class InvestigationAction implements RunAction2 {
 
     private final BuildInvestigationEvidence evidence;
     private volatile AiAssessment aiAssessment;
+    private String aiScope;
     private io.jenkins.plugins.changeinvestigator.investigation.InvestigationCase investigation;
     private transient java.util.Map<String, io.jenkins.plugins.changeinvestigator.investigation.InvestigationCase>
             comparisons;
@@ -170,13 +171,59 @@ public class InvestigationAction implements RunAction2 {
     }
 
     public java.util.List<String> getAiReferences() {
-        if (aiAssessment == null || !aiAssessment.isCompleted()) return java.util.List.of();
-        String cited = String.join("\n", aiAssessment.getSupportingEvidence());
-        return java.util.List.of("E1", "E2", "E3").stream()
-                .filter(id -> java.util.regex.Pattern.compile("\\b" + id + "\\b")
-                        .matcher(cited)
-                        .find())
-                .toList();
+        return getAiPresentation().getReferences();
+    }
+
+    /** One immutable rendering snapshot; no instance is stored with the build. */
+    public static final class AiPresentation {
+        private final AiAssessment assessment;
+        private final String scope;
+        private final java.util.List<String> references;
+
+        private AiPresentation(AiAssessment assessment, String scope) {
+            this.assessment = assessment;
+            this.scope = scope;
+            String cited = assessment == null || !assessment.isCompleted()
+                    ? ""
+                    : String.join("\n", assessment.getSupportingEvidence());
+            references = java.util.List.of("E1", "E2", "E3").stream()
+                    .filter(id -> java.util.regex.Pattern.compile("\\b" + id + "\\b")
+                            .matcher(cited)
+                            .find())
+                    .toList();
+        }
+
+        public AiAssessment getAssessment() {
+            return assessment;
+        }
+
+        public String getScope() {
+            return scope;
+        }
+
+        public java.util.List<String> getReferences() {
+            return references;
+        }
+
+        public boolean hasAssessment() {
+            return assessment != null;
+        }
+    }
+
+    public synchronized AiPresentation getAiPresentation() {
+        String scope =
+                aiScope != null ? aiScope : (aiAssessment == null ? automaticAiEvidence() : evidence).getAiScope();
+        return new AiPresentation(aiAssessment, scope);
+    }
+
+    private BuildInvestigationEvidence automaticAiEvidence() {
+        if (investigation == null || !investigation.getHistory().isVerified()) return evidence;
+        return evidence.forChangeWindow(investigation.getChanges(), investigation.getWindowEnd());
+    }
+
+    /** Historical assessments describe the original full corpus until explicitly rerun. */
+    public String getAiScope() {
+        return getAiPresentation().getScope();
     }
 
     public AiAssessment getAiAssessment() {
@@ -209,22 +256,30 @@ public class InvestigationAction implements RunAction2 {
         run.getParent().checkPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS);
 
         ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();
+        AiAssessment result;
+        String submittedScope = null;
         if (!config.isAiEnabled()) {
-            this.aiAssessment = AiAssessment.disabled();
+            result = AiAssessment.disabled();
         } else if (config.getProviderConfig() == null) {
-            this.aiAssessment = AiAssessment.failed(
+            result = AiAssessment.failed(
                     "AI analysis is enabled but no AI provider is configured. Go to Manage Jenkins -> System "
                             + "-> Build Change Investigator and select a provider.");
         } else {
+            BuildInvestigationEvidence input = automaticAiEvidence();
+            submittedScope = input.getAiScope();
             AiAnalysisService service = new AiAnalysisService(new ObjectMapper());
-            this.aiAssessment = service.analyze(
-                    evidence, config.getProviderConfig(), config.getTimeoutSeconds(), config.getTemperature());
+            result = service.analyze(
+                    input, config.getProviderConfig(), config.getTimeoutSeconds(), config.getTemperature());
         }
 
-        try {
-            run.save();
-        } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Failed to persist AI assessment for " + run, e);
+        synchronized (this) {
+            this.aiScope = submittedScope;
+            this.aiAssessment = result;
+            try {
+                run.save();
+            } catch (IOException | RuntimeException e) {
+                LOGGER.log(Level.WARNING, "Failed to persist AI assessment; assessment remains available in memory.");
+            }
         }
 
         rsp.sendRedirect2(".");

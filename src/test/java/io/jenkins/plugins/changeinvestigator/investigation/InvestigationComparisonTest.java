@@ -66,6 +66,37 @@ class InvestigationComparisonTest {
     }
 
     @Test
+    void comparisonRejectsInvalidBoundsWith400AndRendersSuccessfulTarget(JenkinsRule j) throws Exception {
+        var project = j.createFreeStyleProject("comparison-bounds");
+        var first = project.scheduleBuild2(0).get();
+        var second = project.scheduleBuild2(0).get();
+        project.getBuildersList().add(new org.jvnet.hudson.test.FailureBuilder());
+        var failed = project.scheduleBuild2(0).get();
+        var wc = j.createWebClient();
+        for (String query : List.of(
+                "baseline=0&target=2",
+                "baseline=2&target=2",
+                "baseline=2&target=1",
+                "baseline=1&target=102",
+                "baseline=1&target=999",
+                "baseline=x&target=2",
+                "baseline=1",
+                "target=2",
+                "baseline=2147483648&target=2")) {
+            var error = assertThrows(
+                    FailingHttpStatusCodeException.class, () -> wc.getPage(failed, "change-investigation/?" + query));
+            assertEquals(400, error.getStatusCode(), query);
+        }
+        HtmlPage success = wc.getPage(
+                failed, "change-investigation/?baseline=" + first.getNumber() + "&target=" + second.getNumber());
+        assertEquals(200, success.getWebResponse().getStatusCode());
+        assertTrue(success.asNormalizedText().contains("No failure observed in target build"));
+        assertFalse(success.asNormalizedText().contains("Most relevant change:"));
+        assertTrue(success.getForms().stream().noneMatch(f -> "runAi".equals(f.getNameAttribute())));
+        assertNotNull(success.getElementById("jenkins-build-history"));
+    }
+
+    @Test
     void noScmOldEvidenceAndEscaping(JenkinsRule j) throws Exception {
         var project = j.createFreeStyleProject("old-evidence");
         var run = project.scheduleBuild2(0).get();
@@ -85,10 +116,33 @@ class InvestigationComparisonTest {
         structuredCase.set(action, null);
         run.addAction(action);
         run.save();
-        HtmlPage page = j.createWebClient().getPage(run, "change-investigation/");
+        var wc = j.createWebClient();
+        HtmlPage page = wc.getPage(run, "change-investigation/");
         assertTrue(page.asNormalizedText().contains("SCM change evidence unavailable"));
         assertFalse(page.getWebResponse().getContentAsString().contains("<script>alert(1)</script>"));
         assertFalse(action.getView().getCopyText().contains("private-demo-value"));
+        assertEquals(
+                Boolean.TRUE,
+                page.executeJavaScript("document.getElementById('bci-bundle').hidden")
+                        .getJavaScriptResult());
+        page.executeJavaScript("Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{"
+                + "writeText:function(value){window.bciCopyAttempt=value;return Promise.reject(new Error('Synthetic clipboard denial'));}"
+                + "}});");
+        page.getHtmlElementById("bci-copy").click();
+        wc.waitForBackgroundJavaScript(1000);
+        String bundle = action.getView().getCopyText();
+        assertEquals(bundle, page.executeJavaScript("window.bciCopyAttempt").getJavaScriptResult());
+        assertTrue(bundle.length() <= 6000);
+        assertFalse(bundle.contains("private-demo-value"));
+        assertEquals(
+                Boolean.TRUE,
+                page.executeJavaScript("(function(){var b=document.getElementById('bci-bundle');"
+                                + "return !b.hidden && b.readOnly && document.activeElement===b"
+                                + " && b.selectionStart===0 && b.selectionEnd===b.value.length;})()")
+                        .getJavaScriptResult());
+        assertEquals(
+                "Select and copy the investigation below.",
+                page.getElementById("bci-copy-status").getTextContent());
         j.jenkins.reload();
         assertNotNull(j.jenkins
                 .getItemByFullName("old-evidence", FreeStyleProject.class)
