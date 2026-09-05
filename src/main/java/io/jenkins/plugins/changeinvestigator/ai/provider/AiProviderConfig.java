@@ -8,6 +8,8 @@ import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisException;
 import io.jenkins.plugins.changeinvestigator.ai.AiAnalysisRequest;
 import io.jenkins.plugins.changeinvestigator.ai.AiProvider;
 import java.io.Serializable;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * One selectable AI provider in the "AI Provider" dropdown (rendered via
@@ -24,6 +26,8 @@ import java.io.Serializable;
 public abstract class AiProviderConfig extends AbstractDescribableImpl<AiProviderConfig> implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
+    private static final Logger LOGGER = Logger.getLogger(AiProviderConfig.class.getName());
 
     static final String TEST_SYSTEM_PROMPT = "Respond with exactly: {\"ok\":true}";
     static final String TEST_USER_PROMPT = "Respond with exactly: {\"ok\":true}";
@@ -58,6 +62,17 @@ public abstract class AiProviderConfig extends AbstractDescribableImpl<AiProvide
             return FormValidation.error("Connection failed (" + e.getKind() + "): " + e.getMessage());
         } catch (RuntimeException e) {
             return FormValidation.error("Connection failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+        } catch (LinkageError e) {
+            // This is the outermost Jenkins-facing safety boundary for Test Connection: an Error
+            // (not an Exception) from a provider SDK failing to link at runtime - most notably
+            // AWS Bedrock's SDK if a conflicting AWS SDK version is visible through another
+            // installed plugin's classloader - is a sibling of Exception under Throwable, so it
+            // is not caught by either clause above. Without this clause it propagates straight
+            // through Stapler and renders Jenkins' generic "Oops" page instead of a safe,
+            // in-form validation error.
+            LOGGER.log(Level.WARNING, "AI provider failed to load/link correctly during Test Connection", e);
+            return FormValidation.error("Connection failed: an internal provider error occurred ("
+                    + e.getClass().getSimpleName() + "). See the Jenkins log for details.");
         }
     }
 

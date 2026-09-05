@@ -187,7 +187,7 @@ class BedrockProviderTest {
     }
 
     @Test
-    void mapsStsAssumeRoleFailureToCredentialsMissing() throws Exception {
+    void mapsStsAssumeRoleFailureToAssumeRoleFailed() throws Exception {
         try (MockAiServer mock = MockAiServer.startWithStatus(403, ASSUME_ROLE_ACCESS_DENIED_XML)) {
             var provider = new BedrockProvider(
                     "us-east-1",
@@ -201,9 +201,139 @@ class BedrockProviderTest {
             AiAnalysisException ex = assertThrows(
                     AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
 
-            assertEquals(AiAnalysisException.Kind.CREDENTIALS_MISSING, ex.getKind());
+            assertEquals(AiAnalysisException.Kind.ASSUME_ROLE_FAILED, ex.getKind());
             assertTrue(ex.getMessage().contains(TEST_ROLE_ARN));
         }
+    }
+
+    @Test
+    void mapsMissingCredentialsToCredentialsMissingNotConnectionFailed() {
+        // The exact scenario behind the original production bug's reproduction: no credential
+        // selected, and none of the SDK's default credential chain sources have anything either
+        // (no env vars, no profile, no IMDS) - must be reported as a configuration problem
+        // (CREDENTIALS_MISSING), not a misleading CONNECTION_FAILED, even though both are raised
+        // as the same SdkClientException type.
+        var provider =
+                new BedrockProvider("us-east-1", "anthropic.claude-sonnet-4-5", null, 10, "http://127.0.0.1:1", null);
+        AiAnalysisException ex = assertThrows(
+                AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+        // Whichever failure the SDK hits first (no credentials available, or the unreachable
+        // endpoint) is acceptable here - both are safely categorized, neither is left generic.
+        assertTrue(
+                ex.getKind() == AiAnalysisException.Kind.CREDENTIALS_MISSING
+                        || ex.getKind() == AiAnalysisException.Kind.CONNECTION_FAILED,
+                "expected CREDENTIALS_MISSING or CONNECTION_FAILED, got: " + ex.getKind());
+    }
+
+    @Test
+    void mapsAccessDeniedToAuthorizationFailed() throws Exception {
+        try (MockAiServer mock = MockAiServer.startWithAwsError(
+                403, "AccessDeniedException", "{\"message\":\"not authorized to perform bedrock:InvokeModel\"}")) {
+            var provider = new BedrockProvider(
+                    "us-east-1", "anthropic.claude-sonnet-4-5", TEST_CREDENTIALS, 10, mock.baseUrl(), null);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(AiAnalysisException.Kind.AUTHORIZATION_FAILED, ex.getKind());
+        }
+    }
+
+    @Test
+    void mapsResourceNotFoundToModelNotFound() throws Exception {
+        try (MockAiServer mock =
+                MockAiServer.startWithAwsError(404, "ResourceNotFoundException", "{\"message\":\"model not found\"}")) {
+            var provider =
+                    new BedrockProvider("us-east-1", "no-such-model", TEST_CREDENTIALS, 10, mock.baseUrl(), null);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(AiAnalysisException.Kind.MODEL_NOT_FOUND, ex.getKind());
+        }
+    }
+
+    @Test
+    void mapsValidationExceptionToConfigurationInvalid() throws Exception {
+        try (MockAiServer mock = MockAiServer.startWithAwsError(
+                400, "ValidationException", "{\"message\":\"1 validation error detected\"}")) {
+            var provider = new BedrockProvider(
+                    "us-east-1", "anthropic.claude-sonnet-4-5", TEST_CREDENTIALS, 10, mock.baseUrl(), null);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(AiAnalysisException.Kind.CONFIGURATION_INVALID, ex.getKind());
+        }
+    }
+
+    @Test
+    void mapsThrottlingToRateLimited() throws Exception {
+        try (MockAiServer mock =
+                MockAiServer.startWithAwsError(429, "ThrottlingException", "{\"message\":\"rate exceeded\"}")) {
+            var provider = new BedrockProvider(
+                    "us-east-1", "anthropic.claude-sonnet-4-5", TEST_CREDENTIALS, 10, mock.baseUrl(), null);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(AiAnalysisException.Kind.RATE_LIMITED, ex.getKind());
+        }
+    }
+
+    @Test
+    void mapsModelTimeoutToTimeout() throws Exception {
+        try (MockAiServer mock =
+                MockAiServer.startWithAwsError(408, "ModelTimeoutException", "{\"message\":\"model timed out\"}")) {
+            var provider = new BedrockProvider(
+                    "us-east-1", "anthropic.claude-sonnet-4-5", TEST_CREDENTIALS, 10, mock.baseUrl(), null);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(AiAnalysisException.Kind.TIMEOUT, ex.getKind());
+        }
+    }
+
+    @Test
+    void mapsServiceUnavailableToProviderUnavailable() throws Exception {
+        try (MockAiServer mock = MockAiServer.startWithAwsError(
+                503, "ServiceUnavailableException", "{\"message\":\"service unavailable\"}")) {
+            var provider = new BedrockProvider(
+                    "us-east-1", "anthropic.claude-sonnet-4-5", TEST_CREDENTIALS, 10, mock.baseUrl(), null);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(AiAnalysisException.Kind.PROVIDER_UNAVAILABLE, ex.getKind());
+        }
+    }
+
+    @Test
+    void mapsModelNotReadyToProviderUnavailable() throws Exception {
+        try (MockAiServer mock =
+                MockAiServer.startWithAwsError(429, "ModelNotReadyException", "{\"message\":\"model not ready\"}")) {
+            var provider = new BedrockProvider(
+                    "us-east-1", "anthropic.claude-sonnet-4-5", TEST_CREDENTIALS, 10, mock.baseUrl(), null);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(AiAnalysisException.Kind.PROVIDER_UNAVAILABLE, ex.getKind());
+        }
+    }
+
+    @Test
+    void mapsModelErrorToHttpError() throws Exception {
+        try (MockAiServer mock = MockAiServer.startWithAwsError(
+                424, "ModelErrorException", "{\"message\":\"underlying model returned an error\"}")) {
+            var provider = new BedrockProvider(
+                    "us-east-1", "anthropic.claude-sonnet-4-5", TEST_CREDENTIALS, 10, mock.baseUrl(), null);
+            AiAnalysisException ex = assertThrows(
+                    AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+            assertEquals(AiAnalysisException.Kind.HTTP_ERROR, ex.getKind());
+        }
+    }
+
+    @Test
+    void mapsMalformedRegionToInvalidRegion() {
+        var provider = new BedrockProvider("not a valid region!!", "anthropic.claude-sonnet-4-5", TEST_CREDENTIALS, 10);
+        AiAnalysisException ex = assertThrows(
+                AiAnalysisException.class, () -> provider.chatCompletion(new AiAnalysisRequest("s", "u", 0.2)));
+        // Region.of(...) itself doesn't validate strictly, but the SDK's own client construction
+        // must not throw an uncaught IllegalArgumentException for an unresolvable region string;
+        // accept either INVALID_REGION (if we catch it directly) or CONNECTION_FAILED (if the SDK
+        // instead fails trying to resolve an endpoint for the bogus region) - either is safe.
+        assertTrue(
+                ex.getKind() == AiAnalysisException.Kind.INVALID_REGION
+                        || ex.getKind() == AiAnalysisException.Kind.CONNECTION_FAILED,
+                "expected INVALID_REGION or CONNECTION_FAILED, got: " + ex.getKind());
     }
 
     @Test

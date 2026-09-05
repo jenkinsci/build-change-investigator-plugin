@@ -38,6 +38,18 @@ public final class MockAiServer implements AutoCloseable {
     }
 
     public static MockAiServer start(Function<HttpExchange, String> responder, int statusCode) throws IOException {
+        return start(responder, statusCode, null);
+    }
+
+    /**
+     * @param errorTypeHeader when non-null, sent as {@code x-amzn-errortype} - the header AWS SDK
+     *     v2's restJson1 protocol (used by Bedrock Runtime and every other JSON-protocol AWS
+     *     service) checks first to determine which specific service exception subclass to
+     *     unmarshal a non-2xx response into, ahead of falling back to a {@code __type} field in
+     *     the body itself.
+     */
+    public static MockAiServer start(Function<HttpExchange, String> responder, int statusCode, String errorTypeHeader)
+            throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         MockAiServer mock = new MockAiServer(server);
         server.createContext("/", exchange -> {
@@ -52,6 +64,9 @@ public final class MockAiServer implements AutoCloseable {
                 String response = responder.apply(exchange);
                 byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
+                if (errorTypeHeader != null) {
+                    exchange.getResponseHeaders().add("x-amzn-errortype", errorTypeHeader);
+                }
                 exchange.sendResponseHeaders(statusCode, bytes.length);
                 exchange.getResponseBody().write(bytes);
             } finally {
@@ -64,6 +79,12 @@ public final class MockAiServer implements AutoCloseable {
 
     public static MockAiServer startWithStatus(int statusCode, String responseBody) throws IOException {
         return start(exchange -> responseBody, statusCode);
+    }
+
+    /** Like {@link #startWithStatus(int, String)} but also sets the AWS restJson1 error-type header - see {@link #start(Function, int, String)}. */
+    public static MockAiServer startWithAwsError(int statusCode, String errorType, String responseBody)
+            throws IOException {
+        return start(exchange -> responseBody, statusCode, errorType);
     }
 
     /** Reads a request header from the most recently handled request (case-insensitive per HTTP semantics). */

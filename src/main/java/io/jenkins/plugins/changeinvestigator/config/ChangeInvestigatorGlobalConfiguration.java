@@ -100,6 +100,13 @@ public class ChangeInvestigatorGlobalConfiguration extends GlobalConfiguration {
             bc.commit();
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to save " + getConfigFile(), e);
+        } catch (IllegalArgumentException e) {
+            // bindJSON throws this (unchecked) when a submitted value can't be coerced into a
+            // field's declared type - e.g. non-numeric text posted for the numeric timeout
+            // field, whether from a tampered request or a future form-field regression. Without
+            // this, it would propagate straight through Stapler as Jenkins' generic "Oops" page
+            // instead of the framework's own graceful "re-show the form with an error" handling.
+            throw new FormException("Could not save Build Change Investigator settings: " + e.getMessage(), e, null);
         }
         return true;
     }
