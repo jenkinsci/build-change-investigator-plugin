@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+- Add an opt-in, local notification lifecycle core with versioned evidence identity,
+  coverage-gated recovery, bounded persistence, suppression and transport-neutral outbox records.
+  No external delivery or notification configuration UI is included.
+
 ## [1.0.0] - 2026-08-29
 
 Initial release.

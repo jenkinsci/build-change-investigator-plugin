@@ -1,0 +1,1291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Build Change Investigator NotificationEvent v1",
+  "description": "Bounded redacted transport-neutral event snapshot. JSON Schema constraints supplement, not replace, authorization, canonicalization, semantic and UTF-8 byte-budget validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventVersion",
+    "eventId",
+    "investigationId",
+    "caseRevision",
+    "eventType",
+    "createdAt",
+    "jobId",
+    "jobLabel",
+    "contextDigest",
+    "investigationKey",
+    "build",
+    "boundary",
+    "failureSignature",
+    "failureSummary",
+    "topCandidates",
+    "allChangeCount",
+    "changesComplete",
+    "suggestedResponders",
+    "suggestedChecks",
+    "ai",
+    "lifecycleState",
+    "recovery",
+    "confirmation",
+    "materialReasons",
+    "redaction",
+    "correlationStatus",
+    "relatedInvestigations"
+  ],
+  "properties": {
+    "eventVersion": {
+      "const": 1
+    },
+    "eventId": {
+      "$ref": "#/$defs/uuid"
+    },
+    "investigationId": {
+      "$ref": "#/$defs/uuid"
+    },
+    "caseRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "eventType": {
+      "enum": [
+        "INVESTIGATION_OPENED",
+        "INVESTIGATION_UPDATED",
+        "AI_AVAILABLE",
+        "RECOVERY_CANDIDATE",
+        "RECOVERY_OBSERVED",
+        "RESOLUTION_CONFIRMED",
+        "CORRECTION",
+        "CASE_CLOSED"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "jobId": {
+      "$ref": "#/$defs/uuid"
+    },
+    "jobLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "contextDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "investigationKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyVersion",
+        "digest",
+        "episodeAnchorRunId"
+      ],
+      "properties": {
+        "keyVersion": {
+          "const": 1
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "episodeAnchorRunId": {
+          "$ref": "#/$defs/runId"
+        }
+      }
+    },
+    "build": {
+      "$ref": "#/$defs/build"
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lastKnownGood",
+        "firstBad",
+        "firstBadVerified",
+        "proofStatus"
+      ],
+      "properties": {
+        "lastKnownGood": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/build"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "firstBad": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/build"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "firstBadVerified": {
+          "type": "boolean"
+        },
+        "proofStatus": {
+          "enum": [
+            "VERIFIED",
+            "UNKNOWN",
+            "HISTORY_GAP",
+            "HISTORY_EXPIRED",
+            "CONTEXT_CHANGED"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "firstBadVerified": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "firstBad": {
+                "$ref": "#/$defs/build"
+              },
+              "lastKnownGood": {
+                "$ref": "#/$defs/build"
+              },
+              "proofStatus": {
+                "const": "VERIFIED"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "failureSignature": {
+      "$ref": "#/$defs/signature"
+    },
+    "failureSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "diagnostic",
+        "location",
+        "limitation"
+      ],
+      "properties": {
+        "category": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "diagnostic": {
+          "type": "string",
+          "maxLength": 1200
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512
+        },
+        "limitation": {
+          "type": "string",
+          "maxLength": 400
+        }
+      }
+    },
+    "topCandidates": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
+    },
+    "allChangeCount": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "changesComplete": {
+      "type": "boolean"
+    },
+    "suggestedResponders": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "label",
+          "basis",
+          "resolutionStatus"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "PERSON",
+              "TEAM"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "basis": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "resolutionStatus": {
+            "enum": [
+              "SUGGESTED",
+              "VERIFIED_MAPPING",
+              "AMBIGUOUS"
+            ]
+          }
+        }
+      }
+    },
+    "suggestedChecks": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      }
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "summary",
+        "suggestedCheck",
+        "evidenceRevision"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "AI_NOT_CONFIGURED",
+            "AI_DISABLED",
+            "AI_PENDING",
+            "AI_COMPLETE",
+            "AI_FAILED"
+          ]
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 400
+        },
+        "suggestedCheck": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 240
+        },
+        "evidenceRevision": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "not": {
+                  "const": "AI_COMPLETE"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "summary": {
+                "type": "null"
+              },
+              "suggestedCheck": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "lifecycleState": {
+      "enum": [
+        "ACTIVE",
+        "RECOVERY_PENDING",
+        "RECOVERED",
+        "CONFIRMED_RESOLUTION",
+        "CLOSED"
+      ]
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assessment",
+        "coverage",
+        "build",
+        "candidateIds",
+        "basis"
+      ],
+      "properties": {
+        "assessment": {
+          "enum": [
+            "NONE",
+            "POSSIBLE_CHANGE",
+            "LIKELY_RECOVERY_CHANGE",
+            "FIX_UNKNOWN",
+            "CONFIRMED_FIX"
+          ]
+        },
+        "coverage": {
+          "enum": [
+            "UNKNOWN",
+            "VERIFIED",
+            "SKIPPED",
+            "NOT_COMPARABLE"
+          ]
+        },
+        "build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/build"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidateIds": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/digest"
+          }
+        },
+        "basis": {
+          "type": "string",
+          "maxLength": 400
+        }
+      }
+    },
+    "confirmation": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "recordId",
+            "revision",
+            "confirmedAt",
+            "actorLabel",
+            "source",
+            "causeCandidateId",
+            "fixCommit",
+            "fixBuild",
+            "note",
+            "correctiveAction",
+            "validationBasis"
+          ],
+          "properties": {
+            "recordId": {
+              "$ref": "#/$defs/uuid"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "confirmedAt": {
+              "type": "string",
+              "format": "date-time",
+              "maxLength": 40
+            },
+            "actorLabel": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "source": {
+              "const": "AUTHENTICATED_JENKINS_ACTION"
+            },
+            "causeCandidateId": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/digest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fixCommit": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128
+            },
+            "fixBuild": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/build"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "correctiveAction": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 400
+            },
+            "validationBasis": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 400
+            }
+          }
+        }
+      ]
+    },
+    "materialReasons": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "FIRST_BAD_VERIFIED",
+          "BOUNDARY_CORRECTED",
+          "TOP_CANDIDATE_CHANGED",
+          "EVIDENCE_STRENGTH_CHANGED",
+          "RELEVANT_CHANGE_ADDED",
+          "RESPONDER_CHANGED",
+          "AI_COMPLETED",
+          "RECOVERY_CANDIDATE_ADDED",
+          "RECOVERY_VERIFIED",
+          "HUMAN_CONFIRMATION",
+          "CORRECTION",
+          "HISTORY_EXPIRED"
+        ]
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyVersion",
+        "applied",
+        "truncatedFields"
+      ],
+      "properties": {
+        "policyVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "applied": {
+          "const": true
+        },
+        "truncatedFields": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          }
+        }
+      }
+    },
+    "correlationStatus": {
+      "enum": [
+        "NEW",
+        "SAME",
+        "UNKNOWN"
+      ]
+    },
+    "relatedInvestigations": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "investigationId",
+          "relationship"
+        ],
+        "properties": {
+          "investigationId": {
+            "$ref": "#/$defs/uuid"
+          },
+          "relationship": {
+            "enum": [
+              "RECURRENCE",
+              "SIMILAR_EVIDENCE"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "lifecycleState": {
+            "enum": [
+              "RECOVERED",
+              "CONFIRMED_RESOLUTION"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "recovery": {
+            "properties": {
+              "coverage": {
+                "const": "VERIFIED"
+              },
+              "build": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/build"
+                  },
+                  {
+                    "properties": {
+                      "result": {
+                        "const": "SUCCESS"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "eventType": {
+            "const": "RESOLUTION_CONFIRMED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "lifecycleState": {
+            "const": "CONFIRMED_RESOLUTION"
+          },
+          "confirmation": {
+            "type": "object"
+          },
+          "recovery": {
+            "properties": {
+              "assessment": {
+                "const": "CONFIRMED_FIX"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycleState": {
+            "const": "CONFIRMED_RESOLUTION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "confirmation": {
+            "type": "object"
+          },
+          "recovery": {
+            "properties": {
+              "assessment": {
+                "const": "CONFIRMED_FIX"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "failureSignature": {
+            "properties": {
+              "quality": {
+                "const": "UNRESOLVED"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "correlationStatus": {
+            "const": "UNKNOWN"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "recovery": {
+            "properties": {
+              "assessment": {
+                "enum": [
+                  "LIKELY_RECOVERY_CHANGE",
+                  "FIX_UNKNOWN",
+                  "CONFIRMED_FIX"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "recovery": {
+            "properties": {
+              "coverage": {
+                "const": "VERIFIED"
+              },
+              "build": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/build"
+                  },
+                  {
+                    "properties": {
+                      "result": {
+                        "const": "SUCCESS"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "recovery": {
+            "properties": {
+              "assessment": {
+                "const": "CONFIRMED_FIX"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "confirmation": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "recovery": {
+            "properties": {
+              "assessment": {
+                "const": "LIKELY_RECOVERY_CHANGE"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "recovery": {
+            "properties": {
+              "candidateIds": {
+                "minItems": 1
+              },
+              "basis": {
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycleState": {
+            "const": "RECOVERED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "recovery": {
+            "properties": {
+              "assessment": {
+                "enum": [
+                  "LIKELY_RECOVERY_CHANGE",
+                  "FIX_UNKNOWN"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "maxLength": 36
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "number",
+        "url",
+        "result"
+      ],
+      "properties": {
+        "runId": {
+          "$ref": "#/$defs/runId"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri",
+          "maxLength": 2048,
+          "pattern": "^https?://"
+        },
+        "result": {
+          "enum": [
+            "SUCCESS",
+            "FAILURE",
+            "UNSTABLE",
+            "ABORTED",
+            "NOT_BUILT",
+            "UNKNOWN"
+          ]
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failureSignatureVersion",
+        "extractorVersion",
+        "sourceObservationId",
+        "normalizationProfile",
+        "digest",
+        "quality",
+        "category",
+        "identityFields",
+        "contextFields",
+        "reasonCodes"
+      ],
+      "properties": {
+        "failureSignatureVersion": {
+          "const": 1
+        },
+        "extractorVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "sourceObservationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "normalizationProfile": {
+          "const": "BCI_SIGNATURE_V1"
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "enum": [
+            "SPECIFIC",
+            "UNRESOLVED"
+          ]
+        },
+        "category": {
+          "enum": [
+            "COMPILER",
+            "API_LINKAGE",
+            "TEST",
+            "EXCEPTION",
+            "GENERIC"
+          ]
+        },
+        "identityFields": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/identityCOMPILER"
+            },
+            {
+              "$ref": "#/$defs/identityAPI_LINKAGE"
+            },
+            {
+              "$ref": "#/$defs/identityTEST"
+            },
+            {
+              "$ref": "#/$defs/identityEXCEPTION"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contextFields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "line",
+            "column",
+            "stageLabel",
+            "reportedLocation"
+          ],
+          "properties": {
+            "line": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "column": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "stageLabel": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 160
+            },
+            "reportedLocation": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 512
+            }
+          }
+        },
+        "reasonCodes": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "MISSING_CONTEXT",
+              "AMBIGUOUS_PATH",
+              "GENERIC_DIAGNOSTIC",
+              "REDACTED_CRITICAL_FIELD",
+              "TRUNCATED_CRITICAL_FIELD",
+              "UNSUPPORTED_PROFILE",
+              "HISTORY_GAP",
+              "VERSION_INCOMPATIBLE"
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "quality": {
+                "const": "SPECIFIC"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "identityFields": {
+                "type": "object"
+              },
+              "category": {
+                "enum": [
+                  "COMPILER",
+                  "API_LINKAGE",
+                  "TEST",
+                  "EXCEPTION"
+                ]
+              },
+              "reasonCodes": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "digest": {
+                "type": "null"
+              },
+              "identityFields": {
+                "type": "null"
+              },
+              "reasonCodes": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "quality": {
+                "const": "SPECIFIC"
+              },
+              "category": {
+                "const": "COMPILER"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "identityFields": {
+                "$ref": "#/$defs/identityCOMPILER"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "quality": {
+                "const": "SPECIFIC"
+              },
+              "category": {
+                "const": "API_LINKAGE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "identityFields": {
+                "$ref": "#/$defs/identityAPI_LINKAGE"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "quality": {
+                "const": "SPECIFIC"
+              },
+              "category": {
+                "const": "TEST"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "identityFields": {
+                "$ref": "#/$defs/identityTEST"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "quality": {
+                "const": "SPECIFIC"
+              },
+              "category": {
+                "const": "EXCEPTION"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "identityFields": {
+                "$ref": "#/$defs/identityEXCEPTION"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateId",
+        "path",
+        "commit",
+        "authorLabel",
+        "strength",
+        "relationship",
+        "limitation",
+        "evidenceRefs",
+        "nextCheck"
+      ],
+      "properties": {
+        "candidateId": {
+          "$ref": "#/$defs/digest"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "authorLabel": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 100
+        },
+        "strength": {
+          "enum": [
+            "STRONG",
+            "MODERATE",
+            "WEAK"
+          ]
+        },
+        "relationship": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "limitation": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "nextCheck": {
+          "type": "string",
+          "maxLength": 240
+        }
+      }
+    },
+    "identityCOMPILER": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "scmSourceId",
+        "repositoryPath",
+        "diagnosticKind",
+        "discriminant"
+      ],
+      "properties": {
+        "profile": {
+          "const": "COMPILER"
+        },
+        "scmSourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repositoryPath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "diagnosticKind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "discriminant": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "identityAPI_LINKAGE": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "exceptionType",
+        "apiIdentity",
+        "moduleIdentity"
+      ],
+      "properties": {
+        "profile": {
+          "const": "API_LINKAGE"
+        },
+        "exceptionType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "apiIdentity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "moduleIdentity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "identityTEST": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "testIdentity",
+        "assertionKind",
+        "assertionDiagnostic",
+        "moduleIdentity"
+      ],
+      "properties": {
+        "profile": {
+          "const": "TEST"
+        },
+        "testIdentity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "assertionKind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "assertionDiagnostic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "moduleIdentity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "identityEXCEPTION": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "exceptionType",
+        "applicationMethod",
+        "diagnosticDiscriminant",
+        "moduleIdentity"
+      ],
+      "properties": {
+        "profile": {
+          "const": "EXCEPTION"
+        },
+        "exceptionType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "applicationMethod": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "diagnosticDiscriminant": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "moduleIdentity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}

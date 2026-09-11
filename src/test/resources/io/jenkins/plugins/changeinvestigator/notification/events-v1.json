@@ -1,0 +1,414 @@
+{
+  "description": "Synthetic schema-validation fixtures only. UUID/context/key digest values are placeholders, not runtime provenance.",
+  "specific": {
+    "eventVersion": 1,
+    "eventId": "11111111-1111-4111-8111-111111111111",
+    "investigationId": "22222222-2222-4222-8222-222222222222",
+    "caseRevision": 1,
+    "eventType": "INVESTIGATION_OPENED",
+    "createdAt": "2026-09-10T12:00:00Z",
+    "jobId": "33333333-3333-4333-8333-333333333333",
+    "jobLabel": "Synthetic compiler",
+    "contextDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "investigationKey": {
+      "keyVersion": 1,
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "episodeAnchorRunId": "synthetic-run-223"
+    },
+    "build": {
+      "runId": "synthetic-run-223",
+      "number": 223,
+      "url": "https://jenkins.example.invalid/job/demo/223/",
+      "result": "FAILURE"
+    },
+    "boundary": {
+      "lastKnownGood": {
+        "runId": "synthetic-run-220",
+        "number": 220,
+        "url": "https://jenkins.example.invalid/job/demo/220/",
+        "result": "SUCCESS"
+      },
+      "firstBad": {
+        "runId": "synthetic-run-221",
+        "number": 221,
+        "url": "https://jenkins.example.invalid/job/demo/221/",
+        "result": "FAILURE"
+      },
+      "firstBadVerified": true,
+      "proofStatus": "VERIFIED"
+    },
+    "failureSignature": {
+      "failureSignatureVersion": 1,
+      "extractorVersion": "1",
+      "sourceObservationId": "synthetic-run-223:evidence-1",
+      "normalizationProfile": "BCI_SIGNATURE_V1",
+      "digest": "c8379fdc4f538704896f8d370e07b78886709aead1a38318e5257a1ad63130a1",
+      "quality": "SPECIFIC",
+      "category": "COMPILER",
+      "identityFields": {
+        "profile": "COMPILER",
+        "scmSourceId": "primary",
+        "repositoryPath": "src/main/java/demo/risk/CollateralTrade.java",
+        "diagnosticKind": "cannot-find-symbol",
+        "discriminant": "variable:isPortolioIM"
+      },
+      "contextFields": {
+        "line": 853,
+        "column": null,
+        "stageLabel": null,
+        "reportedLocation": "CollateralTrade.java:853"
+      },
+      "reasonCodes": []
+    },
+    "failureSummary": {
+      "category": "Compilation failure",
+      "diagnostic": "cannot find symbol: isPortolioIM",
+      "location": "CollateralTrade.java:853",
+      "limitation": "Exact changed line is not verified."
+    },
+    "topCandidates": [],
+    "allChangeCount": 1,
+    "changesComplete": true,
+    "suggestedResponders": [],
+    "suggestedChecks": [
+      "Inspect diff near line 853."
+    ],
+    "ai": {
+      "state": "AI_DISABLED",
+      "summary": null,
+      "suggestedCheck": null,
+      "evidenceRevision": null
+    },
+    "lifecycleState": "ACTIVE",
+    "recovery": {
+      "assessment": "NONE",
+      "coverage": "UNKNOWN",
+      "build": null,
+      "candidateIds": [],
+      "basis": ""
+    },
+    "confirmation": null,
+    "materialReasons": [],
+    "redaction": {
+      "policyVersion": 1,
+      "applied": true,
+      "truncatedFields": []
+    },
+    "correlationStatus": "NEW",
+    "relatedInvestigations": []
+  },
+  "unresolved": {
+    "eventVersion": 1,
+    "eventId": "11111111-1111-4111-8111-111111111111",
+    "investigationId": "22222222-2222-4222-8222-222222222222",
+    "caseRevision": 1,
+    "eventType": "INVESTIGATION_OPENED",
+    "createdAt": "2026-09-10T12:00:00Z",
+    "jobId": "33333333-3333-4333-8333-333333333333",
+    "jobLabel": "Synthetic compiler",
+    "contextDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "investigationKey": {
+      "keyVersion": 1,
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "episodeAnchorRunId": "synthetic-run-223"
+    },
+    "build": {
+      "runId": "synthetic-run-223",
+      "number": 223,
+      "url": "https://jenkins.example.invalid/job/demo/223/",
+      "result": "FAILURE"
+    },
+    "boundary": {
+      "lastKnownGood": {
+        "runId": "synthetic-run-220",
+        "number": 220,
+        "url": "https://jenkins.example.invalid/job/demo/220/",
+        "result": "SUCCESS"
+      },
+      "firstBad": {
+        "runId": "synthetic-run-221",
+        "number": 221,
+        "url": "https://jenkins.example.invalid/job/demo/221/",
+        "result": "FAILURE"
+      },
+      "firstBadVerified": true,
+      "proofStatus": "VERIFIED"
+    },
+    "failureSignature": {
+      "failureSignatureVersion": 1,
+      "extractorVersion": "1",
+      "sourceObservationId": "synthetic-run-223:evidence-1",
+      "normalizationProfile": "BCI_SIGNATURE_V1",
+      "digest": null,
+      "quality": "UNRESOLVED",
+      "category": "COMPILER",
+      "identityFields": null,
+      "contextFields": {
+        "line": 853,
+        "column": null,
+        "stageLabel": null,
+        "reportedLocation": "CollateralTrade.java:853"
+      },
+      "reasonCodes": [
+        "AMBIGUOUS_PATH"
+      ]
+    },
+    "failureSummary": {
+      "category": "Compilation failure",
+      "diagnostic": "cannot find symbol: isPortolioIM",
+      "location": "CollateralTrade.java:853",
+      "limitation": "Exact changed line is not verified."
+    },
+    "topCandidates": [],
+    "allChangeCount": 1,
+    "changesComplete": true,
+    "suggestedResponders": [],
+    "suggestedChecks": [
+      "Inspect diff near line 853."
+    ],
+    "ai": {
+      "state": "AI_DISABLED",
+      "summary": null,
+      "suggestedCheck": null,
+      "evidenceRevision": null
+    },
+    "lifecycleState": "ACTIVE",
+    "recovery": {
+      "assessment": "NONE",
+      "coverage": "UNKNOWN",
+      "build": null,
+      "candidateIds": [],
+      "basis": ""
+    },
+    "confirmation": null,
+    "materialReasons": [],
+    "redaction": {
+      "policyVersion": 1,
+      "applied": true,
+      "truncatedFields": []
+    },
+    "correlationStatus": "UNKNOWN",
+    "relatedInvestigations": []
+  },
+  "recovered": {
+    "eventVersion": 1,
+    "eventId": "11111111-1111-4111-8111-111111111111",
+    "investigationId": "22222222-2222-4222-8222-222222222222",
+    "caseRevision": 2,
+    "eventType": "RECOVERY_OBSERVED",
+    "createdAt": "2026-09-10T12:00:00Z",
+    "jobId": "33333333-3333-4333-8333-333333333333",
+    "jobLabel": "Synthetic compiler",
+    "contextDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "investigationKey": {
+      "keyVersion": 1,
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "episodeAnchorRunId": "synthetic-run-223"
+    },
+    "build": {
+      "runId": "synthetic-run-226",
+      "number": 226,
+      "url": "https://jenkins.example.invalid/job/demo/226/",
+      "result": "SUCCESS"
+    },
+    "boundary": {
+      "lastKnownGood": {
+        "runId": "synthetic-run-220",
+        "number": 220,
+        "url": "https://jenkins.example.invalid/job/demo/220/",
+        "result": "SUCCESS"
+      },
+      "firstBad": {
+        "runId": "synthetic-run-221",
+        "number": 221,
+        "url": "https://jenkins.example.invalid/job/demo/221/",
+        "result": "FAILURE"
+      },
+      "firstBadVerified": true,
+      "proofStatus": "VERIFIED"
+    },
+    "failureSignature": {
+      "failureSignatureVersion": 1,
+      "extractorVersion": "1",
+      "sourceObservationId": "synthetic-run-223:evidence-1",
+      "normalizationProfile": "BCI_SIGNATURE_V1",
+      "digest": "c8379fdc4f538704896f8d370e07b78886709aead1a38318e5257a1ad63130a1",
+      "quality": "SPECIFIC",
+      "category": "COMPILER",
+      "identityFields": {
+        "profile": "COMPILER",
+        "scmSourceId": "primary",
+        "repositoryPath": "src/main/java/demo/risk/CollateralTrade.java",
+        "diagnosticKind": "cannot-find-symbol",
+        "discriminant": "variable:isPortolioIM"
+      },
+      "contextFields": {
+        "line": 853,
+        "column": null,
+        "stageLabel": null,
+        "reportedLocation": "CollateralTrade.java:853"
+      },
+      "reasonCodes": []
+    },
+    "failureSummary": {
+      "category": "Compilation failure",
+      "diagnostic": "cannot find symbol: isPortolioIM",
+      "location": "CollateralTrade.java:853",
+      "limitation": "Exact changed line is not verified."
+    },
+    "topCandidates": [],
+    "allChangeCount": 1,
+    "changesComplete": true,
+    "suggestedResponders": [],
+    "suggestedChecks": [
+      "Inspect diff near line 853."
+    ],
+    "ai": {
+      "state": "AI_DISABLED",
+      "summary": null,
+      "suggestedCheck": null,
+      "evidenceRevision": null
+    },
+    "lifecycleState": "RECOVERED",
+    "recovery": {
+      "assessment": "FIX_UNKNOWN",
+      "coverage": "VERIFIED",
+      "build": {
+        "runId": "synthetic-run-226",
+        "number": 226,
+        "url": "https://jenkins.example.invalid/job/demo/226/",
+        "result": "SUCCESS"
+      },
+      "candidateIds": [],
+      "basis": "Synthetic schema fixture: affected check exercised."
+    },
+    "confirmation": null,
+    "materialReasons": [],
+    "redaction": {
+      "policyVersion": 1,
+      "applied": true,
+      "truncatedFields": []
+    },
+    "correlationStatus": "NEW",
+    "relatedInvestigations": []
+  },
+  "confirmed": {
+    "eventVersion": 1,
+    "eventId": "11111111-1111-4111-8111-111111111111",
+    "investigationId": "22222222-2222-4222-8222-222222222222",
+    "caseRevision": 3,
+    "eventType": "RESOLUTION_CONFIRMED",
+    "createdAt": "2026-09-10T12:00:00Z",
+    "jobId": "33333333-3333-4333-8333-333333333333",
+    "jobLabel": "Synthetic compiler",
+    "contextDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "investigationKey": {
+      "keyVersion": 1,
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "episodeAnchorRunId": "synthetic-run-223"
+    },
+    "build": {
+      "runId": "synthetic-run-226",
+      "number": 226,
+      "url": "https://jenkins.example.invalid/job/demo/226/",
+      "result": "SUCCESS"
+    },
+    "boundary": {
+      "lastKnownGood": {
+        "runId": "synthetic-run-220",
+        "number": 220,
+        "url": "https://jenkins.example.invalid/job/demo/220/",
+        "result": "SUCCESS"
+      },
+      "firstBad": {
+        "runId": "synthetic-run-221",
+        "number": 221,
+        "url": "https://jenkins.example.invalid/job/demo/221/",
+        "result": "FAILURE"
+      },
+      "firstBadVerified": true,
+      "proofStatus": "VERIFIED"
+    },
+    "failureSignature": {
+      "failureSignatureVersion": 1,
+      "extractorVersion": "1",
+      "sourceObservationId": "synthetic-run-223:evidence-1",
+      "normalizationProfile": "BCI_SIGNATURE_V1",
+      "digest": "c8379fdc4f538704896f8d370e07b78886709aead1a38318e5257a1ad63130a1",
+      "quality": "SPECIFIC",
+      "category": "COMPILER",
+      "identityFields": {
+        "profile": "COMPILER",
+        "scmSourceId": "primary",
+        "repositoryPath": "src/main/java/demo/risk/CollateralTrade.java",
+        "diagnosticKind": "cannot-find-symbol",
+        "discriminant": "variable:isPortolioIM"
+      },
+      "contextFields": {
+        "line": 853,
+        "column": null,
+        "stageLabel": null,
+        "reportedLocation": "CollateralTrade.java:853"
+      },
+      "reasonCodes": []
+    },
+    "failureSummary": {
+      "category": "Compilation failure",
+      "diagnostic": "cannot find symbol: isPortolioIM",
+      "location": "CollateralTrade.java:853",
+      "limitation": "Exact changed line is not verified."
+    },
+    "topCandidates": [],
+    "allChangeCount": 1,
+    "changesComplete": true,
+    "suggestedResponders": [],
+    "suggestedChecks": [
+      "Inspect diff near line 853."
+    ],
+    "ai": {
+      "state": "AI_DISABLED",
+      "summary": null,
+      "suggestedCheck": null,
+      "evidenceRevision": null
+    },
+    "lifecycleState": "CONFIRMED_RESOLUTION",
+    "recovery": {
+      "assessment": "CONFIRMED_FIX",
+      "coverage": "VERIFIED",
+      "build": {
+        "runId": "synthetic-run-226",
+        "number": 226,
+        "url": "https://jenkins.example.invalid/job/demo/226/",
+        "result": "SUCCESS"
+      },
+      "candidateIds": [],
+      "basis": "Synthetic schema fixture: affected check exercised."
+    },
+    "confirmation": {
+      "recordId": "44444444-4444-4444-8444-444444444444",
+      "revision": 1,
+      "confirmedAt": "2026-09-10T12:05:00Z",
+      "actorLabel": "Synthetic reviewer",
+      "source": "AUTHENTICATED_JENKINS_ACTION",
+      "causeCandidateId": null,
+      "fixCommit": null,
+      "fixBuild": {
+        "runId": "synthetic-run-226",
+        "number": 226,
+        "url": "https://jenkins.example.invalid/job/demo/226/",
+        "result": "SUCCESS"
+      },
+      "note": "Schema fixture only.",
+      "correctiveAction": "Restored the expected synthetic runtime configuration.",
+      "validationBasis": "Reviewed the affected check in the successful build."
+    },
+    "materialReasons": [],
+    "redaction": {
+      "policyVersion": 1,
+      "applied": true,
+      "truncatedFields": []
+    },
+    "correlationStatus": "NEW",
+    "relatedInvestigations": []
+  }
+}
