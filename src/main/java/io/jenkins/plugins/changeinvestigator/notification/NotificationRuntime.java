@@ -10,6 +10,7 @@ import io.jenkins.plugins.changeinvestigator.notification.identity.StableIdentit
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -61,9 +62,13 @@ public final class NotificationRuntime extends RunListener<Run<?, ?>> {
 
     private void activateApproved(Job<?, ?> job, long after) throws IOException {
         synchronized (job) {
-            if (io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration.get()
+            boolean slack = !io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration.get()
                     .resolvedDestinations(job)
-                    .isEmpty()) return;
+                    .isEmpty();
+            boolean email = !io.jenkins.plugins.changeinvestigator.notification.email.config.EmailConfiguration.get()
+                    .resolvedDestinations(job)
+                    .isEmpty();
+            if (!slack && !email) return;
             if (!armed(job)) {
                 String id = StableIdentities.jobId(job);
                 new NotificationEngine(
@@ -75,18 +80,23 @@ public final class NotificationRuntime extends RunListener<Run<?, ?>> {
                 Files.writeString(
                         job.getRootDir().toPath().resolve("bci-notifications/core-armed"), Long.toString(after));
             }
-            var marker = job.getRootDir().toPath().resolve("bci-slack-active");
-            if (!Files.exists(marker, LinkOption.NOFOLLOW_LINKS)) Files.writeString(marker, "1");
+            for (String channel : List.of("slack", "email")) {
+                if ((channel.equals("slack") && !slack) || (channel.equals("email") && !email)) continue;
+                var marker = job.getRootDir().toPath().resolve("bci-" + channel + "-active");
+                if (!Files.exists(marker, LinkOption.NOFOLLOW_LINKS)) Files.writeString(marker, Long.toString(after));
+            }
         }
     }
 
     @Override
     public void onStarted(Run<?, ?> run, TaskListener listener) {
         try {
-            if (armed(run.getParent())
-                    || io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration.get()
+            if ((io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration.get()
                             .resolvedDestinations(run.getParent())
-                            .isEmpty()) return;
+                            .isEmpty()
+                    && io.jenkins.plugins.changeinvestigator.notification.email.config.EmailConfiguration.get()
+                            .resolvedDestinations(run.getParent())
+                            .isEmpty())) return;
             String name = run.getParent().getFullName();
             long before = run.getNumber() - 1L;
             workers.execute(() -> {
@@ -174,18 +184,48 @@ public final class NotificationRuntime extends RunListener<Run<?, ?>> {
                         io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration.get();
                 var policy = configuration.policy(job);
                 var fence = io.jenkins.plugins.changeinvestigator.notification.slack.SlackPolicyFence.read(job);
-                var destinations = configuration.resolvedDestinations(job).stream()
+                var destinations = new java.util.ArrayList<>(configuration.resolvedDestinations(job).stream()
                         .filter(d -> run.getNumber() > fence.afterBuild())
                         .map(d -> new NotificationEngine.DestinationPolicy(
                                 d.identity(), d.getGeneration(), policy.recovery(), policy.aiOnly()))
-                        .toList();
+                        .toList());
+                var emailConfiguration =
+                        io.jenkins.plugins.changeinvestigator.notification.email.config.EmailConfiguration.get();
+                var emailPolicy = emailConfiguration.policy(job);
+                var emailFence = io.jenkins.plugins.changeinvestigator.notification.email.EmailPolicyFence.read(job);
+                Path emailMarker = job.getRootDir().toPath().resolve("bci-email-active");
+                long emailActivation = Files.isRegularFile(emailMarker, LinkOption.NOFOLLOW_LINKS)
+                        ? Long.parseLong(Files.readString(emailMarker))
+                        : Long.MAX_VALUE;
+                if (emailActivation < 0) throw new IOException("Invalid email activation boundary");
+                var emailDestinations = emailConfiguration.resolvedDestinations(job);
+                var emailSecrets = new java.util.ArrayList<String>();
+                for (var destination : emailDestinations) {
+                    emailConfiguration
+                            .resolveSettings(job, destination)
+                            .map(settings -> settings.password())
+                            .filter(password -> !password.isEmpty())
+                            .ifPresent(emailSecrets::add);
+                }
+                destinations.addAll(emailDestinations.stream()
+                        .filter(d -> run.getNumber() > emailFence.afterBuild() && run.getNumber() > emailActivation)
+                        .map(d -> new NotificationEngine.DestinationPolicy(
+                                d.identity(), d.getGeneration(), emailPolicy.recovery(), emailPolicy.aiOnly(), "EMAIL"))
+                        .toList());
                 engine.ingestConfigured(
                         JenkinsNotificationAdapter.observe(
                                 run, jobId, runId, !orderingGap && previous == run.getNumber() - 1),
                         destinations,
-                        System.currentTimeMillis());
-                if (!destinations.isEmpty())
+                        System.currentTimeMillis(),
+                        value -> emailSecrets.stream()
+                                .anyMatch(
+                                        secret -> io.jenkins.plugins.changeinvestigator.notification.email.EmailMessage
+                                                .containsSecret(value, secret)));
+                if (destinations.stream().anyMatch(d -> "SLACK".equals(d.transport())))
                     io.jenkins.plugins.changeinvestigator.notification.slack.SlackDispatcher.get()
+                            .schedule(name);
+                if (destinations.stream().anyMatch(d -> "EMAIL".equals(d.transport())))
+                    io.jenkins.plugins.changeinvestigator.notification.email.EmailDispatcher.get()
                             .schedule(name);
                 previous = run.getNumber();
             }

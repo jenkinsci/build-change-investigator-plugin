@@ -1,0 +1,14 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:l="/lib/layout">
+  <l:layout title="BCI Email delivery">
+    <l:main-panel>
+      <h1>BCI Email delivery</h1>
+      <p>${it.controllerStatus}</p>
+      <p>Read-only operational status, limited to 100 recent case/destination rows. No automatic resend is performed for uncertain outcomes.</p>
+      <table class="jenkins-table">
+        <thead><tr><th>Job</th><th>Investigation</th><th>Delivery status</th></tr></thead>
+        <tbody><j:forEach var="row" items="${it.rows}"><tr><td>${row.job}</td><td>${row.investigation}</td><td>${row.status}</td></tr></j:forEach></tbody>
+      </table>
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

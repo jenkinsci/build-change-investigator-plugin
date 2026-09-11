@@ -40,7 +40,7 @@ public record NotificationInvestigationRecord(
         audit = List.copyOf(audit);
         if (!List.of("AI_NOT_CONFIGURED", "AI_DISABLED", "AI_PENDING", "AI_COMPLETE", "AI_FAILED")
                 .contains(aiState)) throw new IllegalArgumentException("Invalid AI projection");
-        if (processedObservations.size() > 200 || events.size() > 32 || destinations.size() > 10 || audit.size() > 200)
+        if (processedObservations.size() > 200 || events.size() > 32 || destinations.size() > 20 || audit.size() > 200)
             throw new IllegalArgumentException("Notification aggregate limit");
         if (!jobId.toString().equals(context.jobId())) throw new IllegalArgumentException("Notification job mismatch");
         if (!key.jobId().equals(jobId.toString())
@@ -60,13 +60,26 @@ public record NotificationInvestigationRecord(
             long generation,
             SuppressionPolicy.State policy,
             List<OutboxIntent> intents,
-            List<io.jenkins.plugins.changeinvestigator.notification.persistence.DeliverySnapshot> submissions) {
+            List<io.jenkins.plugins.changeinvestigator.notification.persistence.DeliverySnapshot> submissions,
+            String transport) {
+        public DestinationState(
+                UUID destinationId,
+                long generation,
+                SuppressionPolicy.State policy,
+                List<OutboxIntent> intents,
+                List<io.jenkins.plugins.changeinvestigator.notification.persistence.DeliverySnapshot> submissions) {
+            this(destinationId, generation, policy, intents, submissions, "SLACK");
+        }
+
         public DestinationState(
                 UUID destinationId, long generation, SuppressionPolicy.State policy, List<OutboxIntent> intents) {
             this(destinationId, generation, policy, intents, List.of());
         }
 
         public DestinationState {
+            transport = transport == null ? "SLACK" : transport;
+            if (!List.of("SLACK", "EMAIL").contains(transport))
+                throw new IllegalArgumentException("Unsupported destination transport");
             intents = List.copyOf(intents);
             submissions = submissions == null ? List.of() : List.copyOf(submissions);
             if (destinationId == null || generation < 1 || policy == null || intents.size() > 16)

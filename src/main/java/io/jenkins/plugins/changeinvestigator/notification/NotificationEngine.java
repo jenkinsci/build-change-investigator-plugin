@@ -84,15 +84,42 @@ public final class NotificationEngine {
                 now);
     }
 
-    public record DestinationPolicy(UUID id, long generation, boolean recovery, boolean aiUpdates) {
+    public record DestinationPolicy(UUID id, long generation, boolean recovery, boolean aiUpdates, String transport) {
+        public DestinationPolicy(UUID id, long generation, boolean recovery, boolean aiUpdates) {
+            this(id, generation, recovery, aiUpdates, "SLACK");
+        }
+
         public DestinationPolicy {
             if (id == null || generation < 1) throw new IllegalArgumentException("Invalid destination policy");
+            if (!List.of("SLACK", "EMAIL").contains(transport))
+                throw new IllegalArgumentException("Unsupported destination transport");
         }
     }
 
     public NotificationInvestigationRecord ingestConfigured(
             NotificationObservation input, List<DestinationPolicy> destinations, long now) throws IOException {
-        if (destinations.size() > 10
+        return ingestConfigured(input, destinations, now, value -> false);
+    }
+
+    /** A transient disclosure guard never becomes part of the persisted record or event identity. */
+    public NotificationInvestigationRecord ingestConfigured(
+            NotificationObservation input,
+            List<DestinationPolicy> destinations,
+            long now,
+            java.util.function.Predicate<String> withheld)
+            throws IOException {
+        java.util.Objects.requireNonNull(withheld);
+        checkDisclosure(JSON.valueToTree(input), withheld);
+        if (destinations.size() > 20
+                || destinations.stream()
+                                .filter(d -> "SLACK".equals(d.transport()))
+                                .count()
+                        > 10
+                || destinations.stream()
+                                .filter(d -> "EMAIL".equals(d.transport()))
+                                .count()
+                        > 10
+                || destinations.stream().map(DestinationPolicy::id).distinct().count() != destinations.size()
                 || now < 0
                 || !jobId.toString().equals(input.context().jobId()))
             throw new IllegalArgumentException("Invalid ingestion scope");
@@ -218,7 +245,9 @@ public final class NotificationEngine {
                             .filter(d -> d.destinationId().equals(destination))
                             .findFirst()
                             .orElse(null);
-                    if (old != null && old.generation() != approved.generation()) continue;
+                    if (old != null
+                            && (old.generation() != approved.generation()
+                                    || !old.transport().equals(approved.transport()))) continue;
                     var policy = old == null ? SuppressionPolicy.State.empty() : old.policy();
                     SuppressionPolicy.Kind kind = transition.eventType().equals("INVESTIGATION_OPENED")
                             ? SuppressionPolicy.Kind.INITIAL
@@ -323,7 +352,8 @@ public final class NotificationEngine {
                             approved.generation(),
                             offered.state(),
                             intents,
-                            old == null ? List.of() : old.submissions()));
+                            old == null ? List.of() : old.submissions(),
+                            approved.transport()));
                 }
                 retainEventSnapshots(events, destinationStates);
             }
@@ -352,6 +382,20 @@ public final class NotificationEngine {
                     events,
                     destinationStates,
                     audit);
+            checkDisclosure(JSON.valueToTree(record), withheld);
+            // Event and metadata envelopes contain serialized JSON; inspect their decoded text values too.
+            for (var savedEvent : record.events()) checkDisclosure(savedEvent.snapshot(), withheld);
+            for (var savedDestination : record.destinations())
+                for (var submission : savedDestination.submissions()) {
+                    String metadata = submission.payload().stripLeading();
+                    if (metadata.startsWith("{") || metadata.startsWith("[")) {
+                        try {
+                            checkDisclosure(JSON.readTree(metadata), withheld);
+                        } catch (IOException invalid) {
+                            throw new IOException("Notification content withheld by disclosure policy");
+                        }
+                    }
+                }
             long expected =
                     store.load(caseId).map(NotificationStore.Snapshot::revision).orElse(0L);
             // Reserve conservative replacement space before mutation. A failed write leaves a safe overcount.
@@ -363,6 +407,29 @@ public final class NotificationEngine {
                     input.observationId(), caseId, transition.snapshot().revision());
             return record;
         }
+    }
+
+    private static void checkDisclosure(
+            com.fasterxml.jackson.databind.JsonNode node, java.util.function.Predicate<String> withheld)
+            throws IOException {
+        try {
+            checkDisclosure(node, withheld, 0, new int[] {0});
+        } catch (RuntimeException rejected) {
+            throw new IOException("Notification content withheld by disclosure policy");
+        }
+    }
+
+    private static void checkDisclosure(
+            com.fasterxml.jackson.databind.JsonNode node,
+            java.util.function.Predicate<String> withheld,
+            int depth,
+            int[] count)
+            throws IOException {
+        if (node == null || node.isPojo() || node.isBinary() || depth > 32 || ++count[0] > 50000)
+            throw new IOException("Notification disclosure input limit");
+        if (node.isTextual() && withheld.test(node.asText()))
+            throw new IOException("Notification content withheld by disclosure policy");
+        for (var child : node) checkDisclosure(child, withheld, depth + 1, count);
     }
 
     public NotificationInvestigationRecord updateDestination(
@@ -383,7 +450,9 @@ public final class NotificationEngine {
                 if (states.get(i).destinationId().equals(destinationId)) index = i;
             if (index < 0) throw new IOException("Notification destination unavailable");
             var updated = change.apply(states.get(index));
-            if (!updated.destinationId().equals(destinationId))
+            if (!updated.destinationId().equals(destinationId)
+                    || !updated.transport().equals(states.get(index).transport())
+                    || updated.generation() != states.get(index).generation())
                 throw new IOException("Notification destination changed");
             states.set(index, updated);
             var audit = new ArrayList<NotificationInvestigationRecord.Audit>(record.audit());

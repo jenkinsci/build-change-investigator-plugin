@@ -1,4 +1,4 @@
-package io.jenkins.plugins.changeinvestigator.notification.slack;
+package io.jenkins.plugins.changeinvestigator.notification.email;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -21,13 +21,13 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /** One local transaction, one unlocked network attempt, one local outcome transaction. */
-public final class SlackOutbox {
+public final class EmailOutbox {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final Clock clock;
-    private final SlackSubmissionBudget budget;
+    private final EmailSubmissionBudget budget;
     private final Sender sender;
 
-    public SlackOutbox(Clock clock, SlackSubmissionBudget budget, Sender sender) {
+    public EmailOutbox(Clock clock, EmailSubmissionBudget budget, Sender sender) {
         this.clock = clock;
         this.budget = budget;
         this.sender = sender;
@@ -35,33 +35,25 @@ public final class SlackOutbox {
 
     @FunctionalInterface
     public interface Sender {
-        SlackTransport.Outcome send(
-                String token, String workspace, String channel, ObjectNode payload, String threadTs);
+        EmailTransport.Outcome send(EmailTransport.Settings settings, String recipient, String frozenMimeBase64);
     }
 
     public record Target(
             long generation,
-            String workspace,
-            String channel,
+            String sender,
+            String recipient,
             URI jenkinsRoot,
-            String token,
+            EmailTransport.Settings settings,
             boolean recovery,
-            boolean aiUpdates,
-            boolean mentions,
-            String verifiedMentionId) {
+            boolean aiUpdates) {
         public Target {
-            if (generation < 1
-                    || workspace == null
-                    || !workspace.matches("T[A-Z0-9]{2,31}")
-                    || channel == null
-                    || !channel.matches("[CG][A-Z0-9]{2,31}")
-                    || jenkinsRoot == null
-                    || token == null) throw new IllegalArgumentException("Invalid approved Slack target");
+            if (generation < 1 || sender == null || recipient == null || jenkinsRoot == null || settings == null)
+                throw new IllegalArgumentException("Invalid approved email target");
         }
 
         @Override
         public String toString() {
-            return "Approved Slack delivery target";
+            return "Approved email delivery target";
         }
     }
 
@@ -77,7 +69,7 @@ public final class SlackOutbox {
         if (engine.records().stream()
                 .filter(r -> r.investigationId().equals(caseId))
                 .flatMap(r -> r.destinations().stream())
-                .noneMatch(d -> d.destinationId().equals(destination) && "SLACK".equals(d.transport())))
+                .noneMatch(d -> d.destinationId().equals(destination) && "EMAIL".equals(d.transport())))
             return "WRONG_TRANSPORT";
         long now = clock.millis();
         // Expired leases become unknown even while the restored controller remains disarmed.
@@ -155,7 +147,7 @@ public final class SlackOutbox {
                             .pending()
                             .eventId()
                             .equals(intent.eventId().toString())) return "POLICY_DEFERRED";
-            String root = rootTimestamp(state, target);
+            DeliverySnapshot root = rootSnapshot(state);
             if (root == null
                     && state.intents().stream()
                             .anyMatch(i -> i.attempts() > 0 && i.state() != OutboxIntent.State.CANCELLED)) {
@@ -167,46 +159,63 @@ public final class SlackOutbox {
                 return "THREAD_UNAVAILABLE";
             }
             try {
-                ObjectNode payload = new SlackRenderer(target.jenkinsRoot())
+                EmailRenderer.Content content = new EmailRenderer(target.jenkinsRoot())
                         .render(
                                 event,
                                 root == null
-                                                && !List.of("RECOVERY_OBSERVED", "RESOLUTION_CONFIRMED", "CASE_CLOSED")
-                                                        .contains(type)
-                                        ? SlackRenderer.Presentation.INITIAL_BRIEF
-                                        : SlackRenderer.Presentation.EVENT);
-                if (root == null
-                        && type.equals("INVESTIGATION_OPENED")
-                        && target.mentions()
-                        && target.verifiedMentionId() != null
-                        && target.verifiedMentionId().matches("[UWS][A-Z0-9]{2,31}")) {
-                    String mention = target.verifiedMentionId().startsWith("S")
-                            ? "<!subteam^" + target.verifiedMentionId() + ">"
-                            : "<@" + target.verifiedMentionId() + ">";
-                    var section = payload.withArray("blocks").addObject();
-                    section.put("type", "context")
-                            .putArray("elements")
-                            .addObject()
-                            .put("type", "mrkdwn")
-                            .put(
-                                    "text",
-                                    "Approved triage mapping: " + mention
-                                            + ". Suggested responder, not an assignment.");
-                    payload.put("text", payload.path("text").asText() + "\nApproved triage mapping: " + mention);
+                                        ? EmailRenderer.Presentation.INITIAL_FIELDNOTE
+                                        : EmailRenderer.Presentation.EVENT);
+                ObjectNode metadata = JSON.createObjectNode();
+                String rootId = root == null
+                        ? null
+                        : JSON.readTree(root.payload()).path("messageId").asText();
+                String subject = root == null
+                        ? content.subject()
+                        : JSON.readTree(root.payload()).path("subject").asText();
+                var references = new ArrayList<String>();
+                for (var receipt : state.intents()) {
+                    if (receipt.state() != OutboxIntent.State.SENT) continue;
+                    for (var snapshot : state.submissions())
+                        if (snapshot.deliveryId().equals(receipt.deliveryId()))
+                            references.add(JSON.readTree(snapshot.payload())
+                                    .path("messageId")
+                                    .asText());
                 }
-                String body = JSON.writeValueAsString(payload);
-                if (!target.token().isEmpty() && body.contains(target.token()))
-                    throw new IllegalArgumentException("Credential in rendered content");
+                String password = target.settings().password();
+                if (EmailMessage.containsSecret(content.html(), password)
+                        || EmailMessage.containsSecret(content.plainText(), password)
+                        || EmailMessage.containsSecret(subject, password))
+                    throw new IllegalArgumentException("Credential in content");
+                var prepared = EmailMessage.prepare(
+                        intent.deliveryId(),
+                        target.sender(),
+                        target.recipient(),
+                        root == null ? subject : "Re: " + subject,
+                        content.plainText(),
+                        content.html(),
+                        rootId,
+                        references,
+                        intent.createdAt());
+                metadata.put("messageId", prepared.messageId()).put("subject", subject);
+                metadata.put("rootId", rootId == null ? prepared.messageId() : rootId);
+                var chunks = new ArrayList<String>();
+                String mime = prepared.mimeBase64();
+                for (int offset = 0; offset < mime.length(); offset += 32768)
+                    chunks.add(mime.substring(offset, Math.min(offset + 32768, mime.length())));
                 frozen = new DeliverySnapshot(
                         intent.deliveryId(),
-                        body,
-                        (root == null ? "ROOT:" : "REPLY:") + target.workspace() + ":" + target.channel()
-                                + (root == null ? "" : ":" + root),
-                        now);
+                        JSON.writeValueAsString(metadata),
+                        (root == null ? "ROOT:" : "REPLY:") + routing(target),
+                        now,
+                        chunks);
             } catch (IllegalArgumentException invalid) {
                 finishWithoutSend(engine, caseId, destination, intent, "RENDER_REJECTED", now);
                 return "RENDER_REJECTED";
             }
+        }
+        if (!frozen.routing().endsWith(":" + routing(target))) {
+            cancel(engine, caseId, destination, "DESTINATION_CHANGED", now);
+            return "DESTINATION_CHANGED";
         }
         var reservation = budget.reserve(destination, intent.deliveryId(), now);
         if (!reservation.allowed()) {
@@ -254,38 +263,29 @@ public final class SlackOutbox {
                 now);
         if (claimed.get() == null) return "CLAIM_LOST";
         Claim claim = claimed.get();
-        SlackTransport.Outcome outcome;
+        EmailTransport.Outcome outcome;
         try {
             Optional<Target> fresh = authorization.get();
             if (!deliveryArmed.getAsBoolean()
                     || fresh.isEmpty()
                     || fresh.get().generation() != target.generation()
-                    || !fresh.get().workspace().equals(target.workspace())
-                    || !fresh.get().channel().equals(target.channel())
+                    || !routing(fresh.get()).equals(routing(target))
                     || (type.equals("RECOVERY_OBSERVED") && !fresh.get().recovery())
-                    || (type.equals("AI_AVAILABLE") && !fresh.get().aiUpdates())
-                    || (target.mentions() && !fresh.get().mentions())) {
+                    || (type.equals("AI_AVAILABLE") && !fresh.get().aiUpdates()))
                 return settleCancelled(engine, caseId, destination, claim, clock.millis());
-            }
-            String[] route = claim.snapshot().routing().split(":");
-            ObjectNode payload = (ObjectNode) JSON.readTree(claim.snapshot().payload());
-            outcome = sender.send(
-                    fresh.get().token(),
-                    target.workspace(),
-                    target.channel(),
-                    payload,
-                    route[0].equals("ROOT") ? null : route[3]);
-        } catch (RuntimeException | LinkageError | IOException e) {
-            outcome = new SlackTransport.Outcome(SlackTransport.Status.UNKNOWN_OUTCOME, "ACCEPTANCE_UNKNOWN", 0, null);
+            String mime = String.join("", claim.snapshot().chunks());
+            String password = fresh.get().settings().password();
+            String raw =
+                    new String(java.util.Base64.getDecoder().decode(mime), java.nio.charset.StandardCharsets.UTF_8);
+            if (password != null && !password.isEmpty() && raw.contains(password))
+                return settleCancelled(engine, caseId, destination, claim, clock.millis());
+            outcome = sender.send(fresh.get().settings(), target.recipient(), mime);
+        } catch (RuntimeException | LinkageError e) {
+            outcome = new EmailTransport.Outcome(EmailTransport.Status.UNKNOWN_OUTCOME, "ACCEPTANCE_UNKNOWN");
         }
-        if (outcome == null
-                || outcome.status() == SlackTransport.Status.SENT
-                        && (outcome.receipt() == null
-                                || !outcome.receipt().workspaceId().equals(target.workspace())
-                                || !outcome.receipt().channelId().equals(target.channel()))) {
-            outcome = new SlackTransport.Outcome(SlackTransport.Status.UNKNOWN_OUTCOME, "ACCEPTANCE_UNKNOWN", 0, null);
-        }
-        SlackTransport.Outcome result = outcome;
+        if (outcome == null)
+            outcome = new EmailTransport.Outcome(EmailTransport.Status.UNKNOWN_OUTCOME, "ACCEPTANCE_UNKNOWN");
+        EmailTransport.Outcome result = outcome;
         long completed = clock.millis();
         engine.updateDestination(
                 caseId,
@@ -300,39 +300,35 @@ public final class SlackOutbox {
                                 || !live.leaseToken().equals(claim.intent().leaseToken())) continue;
                         OutboxIntent updated;
                         switch (result.status()) {
-                            case SENT -> {
-                                var receipt = result.receipt();
-                                if (receipt == null
-                                        || !receipt.workspaceId().equals(target.workspace())
-                                        || !receipt.channelId().equals(target.channel()))
-                                    updated = live.unknown(live.leaseToken());
-                                else
-                                    updated = live.accepted(
-                                            live.leaseToken(),
-                                            (claim.snapshot().routing().startsWith("ROOT:") ? "ROOT:" : "REPLY:")
-                                                    + receipt.workspaceId() + ":" + receipt.channelId() + ":"
-                                                    + receipt.messageTs());
-                            }
-                            case RETRYABLE ->
-                                updated = live.rejected(
+                            case SENT ->
+                                updated = live.accepted(
                                         live.leaseToken(),
-                                        true,
-                                        retryAt(live.attempts(), completed, result.retryAfterMillis()));
-                            case PERMANENT_FAILURE, THREAD_UNAVAILABLE ->
-                                updated = safe(
-                                        live.rejected(live.leaseToken(), false, completed),
-                                        result.status() == SlackTransport.Status.THREAD_UNAVAILABLE
-                                                ? "THREAD_UNAVAILABLE"
-                                                : "SLACK_REJECTED");
+                                        (claim.snapshot().routing().startsWith("ROOT:") ? "ROOT:" : "REPLY:")
+                                                + live.deliveryId());
+                            case RETRYABLE ->
+                                updated =
+                                        live.rejected(live.leaseToken(), true, retryAt(live.attempts(), completed, 0));
+                            case PERMANENT_FAILURE ->
+                                updated = safe(live.rejected(live.leaseToken(), false, completed), "EMAIL_REJECTED");
                             default -> updated = live.unknown(live.leaseToken());
                         }
                         intents.set(n, updated);
                         if (updated.state() == OutboxIntent.State.SENT)
-                            submissions.removeIf(s -> s.deliveryId().equals(updated.deliveryId()));
+                            for (int s = 0; s < submissions.size(); s++) {
+                                var saved = submissions.get(s);
+                                if (saved.deliveryId().equals(updated.deliveryId()))
+                                    submissions.set(
+                                            s,
+                                            new DeliverySnapshot(
+                                                    saved.deliveryId(),
+                                                    saved.payload(),
+                                                    saved.routing(),
+                                                    saved.reservedAt()));
+                            }
                     }
                     return with(current, current.policy(), intents, submissions);
                 },
-                result.status() == SlackTransport.Status.SENT ? "DELIVERY_SENT" : "DELIVERY_OUTCOME_RECORDED",
+                result.status() == EmailTransport.Status.SENT ? "DELIVERY_SENT" : "DELIVERY_OUTCOME_RECORDED",
                 completed);
         return result.status().name();
     }
@@ -350,14 +346,20 @@ public final class SlackOutbox {
                 : 2;
     }
 
-    private static String rootTimestamp(DestinationState state, Target target) {
-        return state.intents().stream()
-                .filter(i -> i.state() == OutboxIntent.State.SENT
-                        && i.destinationGeneration() == target.generation()
-                        && i.receipt().startsWith("ROOT:" + target.workspace() + ":" + target.channel() + ":"))
-                .map(i -> i.receipt().split(":")[3])
-                .findFirst()
-                .orElse(null);
+    private static DeliverySnapshot rootSnapshot(DestinationState state) {
+        for (var intent : state.intents()) {
+            if (intent.state() != OutboxIntent.State.SENT || !intent.receipt().startsWith("ROOT:")) continue;
+            for (var snapshot : state.submissions())
+                if (snapshot.deliveryId().equals(intent.deliveryId())) return snapshot;
+        }
+        return null;
+    }
+
+    private static String routing(Target target) {
+        return io.jenkins.plugins.changeinvestigator.notification.identity.IdentityCanonicalizer.digest(
+                target.generation() + ":" + target.sender() + ":" + target.recipient() + ":"
+                        + target.settings().host() + ":" + target.settings().port() + ":"
+                        + target.settings().tls() + ":" + target.settings().allowInternal());
     }
 
     public static String status(DestinationState state) {
@@ -375,7 +377,8 @@ public final class SlackOutbox {
             SuppressionPolicy.State policy,
             List<OutboxIntent> intents,
             List<DeliverySnapshot> submissions) {
-        return new DestinationState(state.destinationId(), state.generation(), policy, intents, submissions);
+        return new DestinationState(
+                state.destinationId(), state.generation(), policy, intents, submissions, state.transport());
     }
 
     private static OutboxIntent safe(OutboxIntent intent, String code) {

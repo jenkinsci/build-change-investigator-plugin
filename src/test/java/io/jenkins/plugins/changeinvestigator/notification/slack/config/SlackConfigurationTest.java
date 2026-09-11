@@ -131,7 +131,16 @@ class SlackConfigurationTest {
         assertFalse(jobXml.contains("channelId"));
         var page = j.createWebClient().getPage(job, "configure");
         var form = page.getFormByName("config");
-        var selection = form.getSelectByName("destinationIds");
+        var selections = form.<org.htmlunit.html.HtmlSelect>getByXPath(
+                ".//section[div[contains(@class, 'jenkins-section__title') and contains(normalize-space(.), 'Build Change Investigator Slack policy')]]//select[@name='destinationIds']");
+        assertEquals(1, selections.size(), "The Slack property must have one approved-destination selector");
+        var selection = selections.get(0);
+        assertEquals(
+                List.of(d.getId()),
+                selection.getSelectedOptions().stream()
+                        .map(org.htmlunit.html.HtmlOption::getValueAttribute)
+                        .toList(),
+                "The forged request must modify the saved Slack selection");
         var forged = (org.htmlunit.html.HtmlOption) page.createElement("option");
         forged.setValueAttribute(UUID.randomUUID().toString());
         forged.setTextContent("Unapproved destination");
@@ -200,9 +209,13 @@ class SlackConfigurationTest {
     void globalFormRendersAndRoundtripsWithoutGrantingVerification(JenkinsRule j) throws Exception {
         var config = SlackConfiguration.get();
         config.replaceDestinations(List.of(destination(null, "CDEMO123", "slack-token", "synthetic", true)));
+        String savedDestinationId = config.getDestinations().get(0).getId();
+        long savedGeneration = config.getDestinations().get(0).getGeneration();
         var page = j.createWebClient().goTo("configure");
         assertTrue(page.asNormalizedText().contains("Build Change Investigator — Slack"));
         j.submit(page.getFormByName("config"));
+        assertEquals(savedDestinationId, config.getDestinations().get(0).getId());
+        assertEquals(savedGeneration, config.getDestinations().get(0).getGeneration());
         assertEquals(1, config.getDestinations().size());
         assertFalse(config.getDestinations().get(0).isVerified());
     }

@@ -1,0 +1,18 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+  <f:section title="Build Change Investigator Email policy">
+    <f:entry title="Policy" field="mode"><f:select/></f:entry>
+    <f:entry title="Custom approved destinations" description="Select one or more destinations already approved for this job. Use Ctrl or Command to select several.">
+      <select name="destinationIds" multiple="multiple" size="4" class="jenkins-select__input">
+        <j:forEach var="destination" items="${descriptor.approvedFor(it)}">
+          <j:choose><j:when test="${instance != null &amp;&amp; instance.isSelected(destination.id)}">
+            <option value="${destination.id}" selected="selected">${destination.name}</option>
+          </j:when><j:otherwise><option value="${destination.id}">${destination.name}</option></j:otherwise></j:choose>
+        </j:forEach>
+      </select>
+    </f:entry>
+    <f:entry title="Custom: recovery notifications" field="recovery"><f:checkbox default="true"/></f:entry>
+    <f:entry title="Custom: AI-only updates" field="aiOnly"><f:checkbox default="false"/></f:entry>
+    <f:block>Inherit uses administrator-approved job/folder destinations with recovery on, AI-only updates off. Custom changes policy only; it cannot change credentials, sender, recipient or disclosure scope.</f:block>
+  </f:section>
+</j:jelly>

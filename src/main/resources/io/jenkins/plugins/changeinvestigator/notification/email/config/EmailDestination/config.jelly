@@ -1,0 +1,11 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+  <f:invisibleEntry><f:textbox field="id"/></f:invisibleEntry>
+  <f:entry title="Name" field="name"><f:textbox/></f:entry>
+  <f:entry title="Sender address" field="sender"><f:textbox/></f:entry>
+  <f:entry title="One recipient or team alias" field="recipient"><f:textbox/></f:entry>
+  <f:entry title="Saved SMTP profile ID" field="profileId"><f:textbox/></f:entry>
+  <f:entry title="Allowed exact job or folder/**" field="scope"><f:textbox/></f:entry>
+  <f:entry title="Enabled" field="enabled"><f:checkbox default="false"/></f:entry>
+  <f:block>Use one plain address per destination; no display names, address lists, CC or BCC. Separate destinations have independent delivery records. Destination ID: ${instance.id}</f:block>
+</j:jelly>

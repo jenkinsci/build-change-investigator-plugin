@@ -1,0 +1,11 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+  <f:invisibleEntry><f:textbox field="id"/></f:invisibleEntry>
+  <f:entry title="Name" field="name"><f:textbox/></f:entry>
+  <f:entry title="SMTP host" field="host"><f:textbox/></f:entry>
+  <f:entry title="SMTP port" field="port"><f:number default="587" min="1" max="65535"/></f:entry>
+  <f:entry title="Transport security" field="tlsMode"><f:select/></f:entry>
+  <f:entry title="Explicitly approve internal/private SMTP routing" field="allowInternal"><f:checkbox default="false"/></f:entry>
+  <f:entry title="Jenkins username/password credential ID (optional)" field="credentialId"><f:textbox/></f:entry>
+  <f:block>Store authentication in Jenkins Credentials; only the reference is saved here. Plain SMTP is allowed only for explicitly approved internal routing and cannot use authentication. TLS is otherwise required. SMTP profile ID: ${instance.id}</f:block>
+</j:jelly>

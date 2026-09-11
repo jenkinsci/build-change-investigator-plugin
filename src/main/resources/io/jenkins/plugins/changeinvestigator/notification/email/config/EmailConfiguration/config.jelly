@@ -1,0 +1,15 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+  <f:section title="Build Change Investigator — Email">
+    <f:block>Email delivery discloses investigation summaries outside Jenkins. Recipients may not have Jenkins Item.READ. Approve only jobs and folders whose evidence may be shared with the selected mailbox or team alias. Delivered email cannot be recalled.</f:block>
+    <f:entry title="Enable email investigation delivery" field="enabled"><f:checkbox default="false"/></f:entry>
+    <f:entry title="Approved SMTP profiles" field="profiles"><f:repeatableProperty field="profiles" minimum="0" add="Add SMTP profile"/></f:entry>
+    <f:entry title="Approved destinations" field="destinations"><f:repeatableProperty field="destinations" minimum="0" add="Add approved email destination"/></f:entry>
+    <f:entry title="Saved destination ID to validate"><f:textbox name="destinationId"/></f:entry>
+    <f:entry><f:validateButton title="Test Connection" progress="Validating..." method="testConnection" with="destinationId"/></f:entry>
+    <f:block>Save first. Test Connection opens and authenticates the saved SMTP connection without sending a message. It does not prove recipient acceptance or inbox delivery.</f:block>
+    <f:entry title="Delivery status"><div>${descriptor.deliveryStatus}</div><a href="${rootURL}/bci-email-delivery/">Review email delivery status</a></f:entry>
+    <f:entry><f:validateButton title="Re-arm delivery for this controller boot" progress="Approving..." method="rearmDelivery" with=""/></f:entry>
+    <f:block>Review this controller and its pending work before re-arming after restart or restore. Approval is shared with other notification delivery. Uncertain SMTP acceptance requires manual reconciliation and is never automatically resent.</f:block>
+  </f:section>
+</j:jelly>

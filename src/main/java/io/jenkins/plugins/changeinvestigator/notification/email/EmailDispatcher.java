@@ -1,4 +1,4 @@
-package io.jenkins.plugins.changeinvestigator.notification.slack;
+package io.jenkins.plugins.changeinvestigator.notification.email;
 
 import hudson.Extension;
 import hudson.ExtensionList;
@@ -10,8 +10,8 @@ import hudson.model.listeners.ItemListener;
 import hudson.security.ACL;
 import io.jenkins.plugins.changeinvestigator.notification.NotificationEngine;
 import io.jenkins.plugins.changeinvestigator.notification.NotificationRuntime;
+import io.jenkins.plugins.changeinvestigator.notification.email.config.EmailConfiguration;
 import io.jenkins.plugins.changeinvestigator.notification.identity.StableIdentities;
-import io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration;
 import java.net.URI;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -27,9 +27,9 @@ import jenkins.model.Jenkins;
 
 /** Fair job-reference scheduling, separate from evidence ingestion and ordinary page rendering. */
 @Extension
-public final class SlackDispatcher extends AsyncPeriodicWork {
+public final class EmailDispatcher extends AsyncPeriodicWork {
     private static final java.util.logging.Logger LOGGER =
-            java.util.logging.Logger.getLogger(SlackDispatcher.class.getName());
+            java.util.logging.Logger.getLogger(EmailDispatcher.class.getName());
     private final Set<String> scheduled = ConcurrentHashMap.newKeySet();
     private final Set<String> channels = ConcurrentHashMap.newKeySet();
     private final AtomicLong rejected = new AtomicLong();
@@ -40,21 +40,21 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
             TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(250),
             runnable -> {
-                Thread t = new Thread(runnable, "bci-slack-delivery");
+                Thread t = new Thread(runnable, "bci-email-delivery");
                 t.setDaemon(true);
                 return t;
             },
             new ThreadPoolExecutor.AbortPolicy());
     private int cursor;
     private final Clock clock;
-    private final SlackOutbox.Sender sender;
+    private final EmailOutbox.Sender sender;
 
-    public SlackDispatcher() {
-        this(Clock.systemUTC(), new SlackTransport()::send);
+    public EmailDispatcher() {
+        this(Clock.systemUTC(), new EmailTransport()::send);
     }
 
-    SlackDispatcher(Clock clock, SlackOutbox.Sender sender) {
-        super("Build Change Investigator Slack dispatch");
+    EmailDispatcher(Clock clock, EmailOutbox.Sender sender) {
+        super("Build Change Investigator Email dispatch");
         this.clock = clock;
         this.sender = sender;
     }
@@ -72,8 +72,8 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
         return 1000;
     }
 
-    public static SlackDispatcher get() {
-        return ExtensionList.lookupSingleton(SlackDispatcher.class);
+    public static EmailDispatcher get() {
+        return ExtensionList.lookupSingleton(EmailDispatcher.class);
     }
 
     public static void configurationChanged() {
@@ -82,7 +82,7 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
         try {
             for (Job<?, ?> job : j.getAllItems(Job.class)) get().schedule(job.getFullName());
         } catch (RuntimeException | LinkageError e) {
-            LOGGER.warning("Slack policy refresh deferred");
+            LOGGER.warning("Email policy refresh deferred");
         }
     }
 
@@ -128,10 +128,10 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
             Job<?, ?> job = Jenkins.get().getItemByFullName(name, Job.class);
             if (job == null) return;
             var runtime = ExtensionList.lookupSingleton(NotificationRuntime.class);
-            var config = SlackConfiguration.get();
+            var config = EmailConfiguration.get();
             if (!config.resolvedDestinations(job).isEmpty()) runtime.activateApproved(job);
             if (!java.nio.file.Files.isRegularFile(
-                    job.getRootDir().toPath().resolve("bci-slack-active"), java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                    job.getRootDir().toPath().resolve("bci-email-active"), java.nio.file.LinkOption.NOFOLLOW_LINKS))
                 return;
             var identity = job.getRootDir().toPath().resolve("bci-notification-job-id");
             if (!java.nio.file.Files.isRegularFile(identity, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
@@ -144,11 +144,11 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
                             == io.jenkins.plugins.changeinvestigator.notification.lifecycle.LifecycleStatus.RECOVERED
                     ? 0
                     : 1));
-            var budget = new SlackSubmissionBudget(Jenkins.get().getRootDir().toPath(), controllerId);
-            var outbox = new SlackOutbox(clock, budget, sender);
+            var budget = new EmailSubmissionBudget(Jenkins.get().getRootDir().toPath(), controllerId);
+            var outbox = new EmailOutbox(clock, budget, sender);
             for (var record : records)
                 for (var state : record.destinations()) {
-                    if (!"SLACK".equals(state.transport())) continue;
+                    if (!"EMAIL".equals(state.transport())) continue;
                     long now = clock.millis();
                     if (state.intents().stream()
                             .noneMatch(i -> (i.state()
@@ -163,7 +163,7 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
                                                             .OutboxIntent.State.LEASED
                                             && i.leaseExpiresAt() <= now)) continue;
                     var destination = config.authorize(job, state.destinationId(), state.generation());
-                    var fence = SlackPolicyFence.read(job);
+                    var fence = EmailPolicyFence.read(job);
                     if (fence.at() > 0)
                         engine.updateDestination(
                                 record.investigationId(),
@@ -178,11 +178,12 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
                                                         ? i.cancelForDestinationGeneration(0)
                                                         : i)
                                                 .toList(),
-                                        d.submissions()),
+                                        d.submissions(),
+                                        d.transport()),
                                 "DISABLED_POLICY_FENCE",
                                 now);
                     String channel = destination
-                            .map(d -> d.getWorkspaceId() + ":" + d.getChannelId())
+                            .map(d -> d.getRecipient())
                             .orElse(state.destinationId().toString());
                     if (!channels.add(channel)) continue;
                     try {
@@ -195,29 +196,27 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
                                     Job<?, ?> current = Jenkins.get().getItemByFullName(name, Job.class);
                                     if (current != job) return java.util.Optional.empty();
                                     try {
-                                        if (SlackPolicyFence.read(job).at() > fence.at())
+                                        if (EmailPolicyFence.read(job).at() > fence.at())
                                             return java.util.Optional.empty();
                                     } catch (java.io.IOException invalidFence) {
                                         return java.util.Optional.empty();
                                     }
                                     var live = config.authorize(job, state.destinationId(), state.generation());
                                     if (live.isEmpty()) return java.util.Optional.empty();
-                                    var secret = config.resolveToken(job, live.get());
+                                    var secret = config.resolveSettings(job, live.get());
                                     if (secret.isEmpty()) return java.util.Optional.empty();
                                     var policy = config.policy(job);
                                     String root = Jenkins.get().getRootUrl();
                                     if (root == null) return java.util.Optional.empty();
                                     var d = live.get();
-                                    return java.util.Optional.of(new SlackOutbox.Target(
+                                    return java.util.Optional.of(new EmailOutbox.Target(
                                             d.getGeneration(),
-                                            d.getWorkspaceId(),
-                                            d.getChannelId(),
+                                            d.getSender(),
+                                            d.getRecipient(),
                                             URI.create(root),
-                                            secret.get().getPlainText(),
+                                            secret.get(),
                                             policy.recovery(),
-                                            policy.aiOnly(),
-                                            policy.mentions(),
-                                            d.getVerifiedMentionId()));
+                                            policy.aiOnly()));
                                 },
                                 () -> {
                                     try {
@@ -233,7 +232,7 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
                     return;
                 }
         } catch (java.io.IOException | RuntimeException | LinkageError e) {
-            LOGGER.warning("Slack dispatch paused; durable delivery state retained for review");
+            LOGGER.warning("Email dispatch paused; durable delivery state retained for review");
         }
     }
 
@@ -241,7 +240,7 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
     public static void shutdown() {
         Jenkins j = Jenkins.getInstanceOrNull();
         if (j != null)
-            for (SlackDispatcher dispatcher : j.getExtensionList(SlackDispatcher.class))
+            for (EmailDispatcher dispatcher : j.getExtensionList(EmailDispatcher.class))
                 dispatcher.workers.shutdownNow();
     }
 
@@ -251,9 +250,9 @@ public final class SlackDispatcher extends AsyncPeriodicWork {
         public void onUpdated(Item item) {
             if (item instanceof Job<?, ?> job) {
                 try {
-                    if (SlackConfiguration.get().policy(job).destinationIds().isEmpty()) SlackPolicyFence.disabled(job);
+                    if (EmailConfiguration.get().policy(job).destinationIds().isEmpty()) EmailPolicyFence.disabled(job);
                 } catch (java.io.IOException | RuntimeException | LinkageError e) {
-                    LOGGER.warning("Slack policy watermark requires review");
+                    LOGGER.warning("Email policy watermark requires review");
                 }
                 get().schedule(job.getFullName());
             }
