@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
 import jenkins.model.Jenkins;
 
-/** Opt-in local core runtime. No destination configuration or transport exists in this phase. */
+/** Bounded evidence collection; external delivery runs on separate workers. */
 @Extension
 public final class NotificationRuntime extends RunListener<Run<?, ?>> {
     private static final Logger LOGGER = Logger.getLogger(NotificationRuntime.class.getName());
@@ -38,7 +38,7 @@ public final class NotificationRuntime extends RunListener<Run<?, ?>> {
             },
             new ThreadPoolExecutor.AbortPolicy());
 
-    /** Internal activation hook for a future administrator policy; never invoked on upgrade or page load. */
+    /** Administrator activation of local evidence collection; this does not approve delivery. */
     public void arm(Job<?, ?> job) throws IOException {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         StableIdentities.controllerId();
@@ -51,6 +51,55 @@ public final class NotificationRuntime extends RunListener<Run<?, ?>> {
                         UUID.fromString(StableIdentities.controllerId()))
                 .arm(boundary);
         Files.writeString(job.getRootDir().toPath().resolve("bci-notifications/core-armed"), Long.toString(boundary));
+    }
+
+    /** Activates local collection only for already approved disclosure policy; never approves delivery. */
+    public void activateApproved(Job<?, ?> job) throws IOException {
+        var latest = job.getLastBuild();
+        activateApproved(job, latest == null ? 0 : latest.getNumber() - (latest.isBuilding() ? 1L : 0L));
+    }
+
+    private void activateApproved(Job<?, ?> job, long after) throws IOException {
+        synchronized (job) {
+            if (io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration.get()
+                    .resolvedDestinations(job)
+                    .isEmpty()) return;
+            if (!armed(job)) {
+                String id = StableIdentities.jobId(job);
+                new NotificationEngine(
+                                job.getRootDir().toPath(),
+                                UUID.fromString(id),
+                                Jenkins.get().getRootDir().toPath(),
+                                UUID.fromString(StableIdentities.controllerId()))
+                        .arm(after);
+                Files.writeString(
+                        job.getRootDir().toPath().resolve("bci-notifications/core-armed"), Long.toString(after));
+            }
+            var marker = job.getRootDir().toPath().resolve("bci-slack-active");
+            if (!Files.exists(marker, LinkOption.NOFOLLOW_LINKS)) Files.writeString(marker, "1");
+        }
+    }
+
+    @Override
+    public void onStarted(Run<?, ?> run, TaskListener listener) {
+        try {
+            if (armed(run.getParent())
+                    || io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration.get()
+                            .resolvedDestinations(run.getParent())
+                            .isEmpty()) return;
+            String name = run.getParent().getFullName();
+            long before = run.getNumber() - 1L;
+            workers.execute(() -> {
+                try {
+                    Job<?, ?> job = Jenkins.get().getItemByFullName(name, Job.class);
+                    if (job != null) activateApproved(job, before);
+                } catch (IOException | RuntimeException | LinkageError e) {
+                    LOGGER.warning("Approved notification activation deferred");
+                }
+            });
+        } catch (RuntimeException | LinkageError e) {
+            LOGGER.warning("Approved notification activation deferred");
+        }
     }
 
     @Override
@@ -121,11 +170,23 @@ public final class NotificationRuntime extends RunListener<Run<?, ?>> {
                         && holdForEarlierRun(run.getStartTimeInMillis(), run.getDuration(), System.currentTimeMillis()))
                     continue;
                 String runId = StableIdentities.runId(run);
-                engine.ingest(
+                var configuration =
+                        io.jenkins.plugins.changeinvestigator.notification.slack.config.SlackConfiguration.get();
+                var policy = configuration.policy(job);
+                var fence = io.jenkins.plugins.changeinvestigator.notification.slack.SlackPolicyFence.read(job);
+                var destinations = configuration.resolvedDestinations(job).stream()
+                        .filter(d -> run.getNumber() > fence.afterBuild())
+                        .map(d -> new NotificationEngine.DestinationPolicy(
+                                d.identity(), d.getGeneration(), policy.recovery(), policy.aiOnly()))
+                        .toList();
+                engine.ingestConfigured(
                         JenkinsNotificationAdapter.observe(
                                 run, jobId, runId, !orderingGap && previous == run.getNumber() - 1),
-                        List.of(),
+                        destinations,
                         System.currentTimeMillis());
+                if (!destinations.isEmpty())
+                    io.jenkins.plugins.changeinvestigator.notification.slack.SlackDispatcher.get()
+                            .schedule(name);
                 previous = run.getNumber();
             }
         } catch (IOException | RuntimeException | LinkageError e) {

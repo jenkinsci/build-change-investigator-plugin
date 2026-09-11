@@ -163,7 +163,7 @@ public final class SuppressionPolicy {
         return new Decision(state, now >= at, at, now >= at ? "ELIGIBLE" : "DEFERRED");
     }
 
-    /** Reserves quota for a durably accepted fake delivery; real transport is intentionally absent. */
+    /** Reserves quota before a durable submission lease, including attempts with uncertain outcomes. */
     public static State accepted(State state, String eventId, long now) {
         Decision decision = evaluate(state, now);
         if (!decision.eligible() || !state.pending().eventId().equals(eventId)) {

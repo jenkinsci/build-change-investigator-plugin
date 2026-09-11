@@ -56,11 +56,29 @@ public record NotificationInvestigationRecord(
     }
 
     public record DestinationState(
-            UUID destinationId, long generation, SuppressionPolicy.State policy, List<OutboxIntent> intents) {
+            UUID destinationId,
+            long generation,
+            SuppressionPolicy.State policy,
+            List<OutboxIntent> intents,
+            List<io.jenkins.plugins.changeinvestigator.notification.persistence.DeliverySnapshot> submissions) {
+        public DestinationState(
+                UUID destinationId, long generation, SuppressionPolicy.State policy, List<OutboxIntent> intents) {
+            this(destinationId, generation, policy, intents, List.of());
+        }
+
         public DestinationState {
             intents = List.copyOf(intents);
+            submissions = submissions == null ? List.of() : List.copyOf(submissions);
             if (destinationId == null || generation < 1 || policy == null || intents.size() > 16)
                 throw new IllegalArgumentException("Invalid destination state");
+            if (submissions.size() > 16
+                    || submissions.stream().map(s -> s.deliveryId()).distinct().count() != submissions.size())
+                throw new IllegalArgumentException("Invalid frozen delivery scope");
+            for (var submission : submissions) {
+                boolean found = false;
+                for (var intent : intents) if (intent.deliveryId().equals(submission.deliveryId())) found = true;
+                if (!found) throw new IllegalArgumentException("Frozen delivery intent missing");
+            }
         }
     }
 

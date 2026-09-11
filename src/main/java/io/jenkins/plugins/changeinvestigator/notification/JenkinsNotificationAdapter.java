@@ -141,8 +141,30 @@ final class JenkinsNotificationAdapter {
                             "Some changed paths were withheld because their identities could not be preserved safely. "
                                     + "No causal relationship has been established.");
         }
-        display.putArray("suggestedResponders");
-        display.putArray("suggestedChecks").add("Inspect the matching failure evidence and related diff in Jenkins.");
+        var responders = display.putArray("suggestedResponders");
+        var authors = new java.util.LinkedHashSet<String>();
+        for (var candidate : top) {
+            if ("STRONG".equals(candidate.path("strength").asText())) {
+                String author = SafeContent.text(candidate.path("authorLabel").asText(), 100);
+                if (!author.isBlank() && authors.size() < 3 && authors.add(author))
+                    responders
+                            .addObject()
+                            .put("kind", "PERSON")
+                            .put("label", author)
+                            .put(
+                                    "basis",
+                                    "Authored a highest-ranked changed file; attribution is not verified identity.")
+                            .put("resolutionStatus", "SUGGESTED");
+            }
+        }
+        String check = top.isEmpty()
+                ? "Inspect the matching failure evidence and related diff in Jenkins."
+                : top.get(0).path("nextCheck").asText();
+        display.putArray("suggestedChecks")
+                .add(
+                        check.isBlank()
+                                ? "Inspect the matching failure evidence and related diff in Jenkins."
+                                : SafeContent.text(check, 240));
         var ai = display.putObject("ai");
         var configuration = io.jenkins.plugins.changeinvestigator.config.ChangeInvestigatorGlobalConfiguration.get();
         String state = !configuration.isAiEnabled()
@@ -154,6 +176,24 @@ final class JenkinsNotificationAdapter {
             // Completion is projected without interpreting its scope as current deterministic evidence.
         }
         ai.put("state", state).putNull("summary").putNull("suggestedCheck").putNull("evidenceRevision");
+        if ("AI_COMPLETE".equals(state) && action != null && evidence != null) {
+            var presentation = action.getAiPresentation();
+            var assessment = presentation.getAssessment();
+            int windowEnd = boundary.path("firstBadVerified").asBoolean()
+                    ? boundary.path("firstBad").path("number").asInt()
+                    : evidence.getChangeWindowEnd();
+            String expectedScope = evidence.forChangeWindow(evidence.getChangeEntries(), windowEnd)
+                    .getAiScope();
+            if (assessment != null && assessment.isCompleted() && expectedScope.equals(presentation.getScope())) {
+                String summary = SafeContent.text(assessment.getReasoning(), 400);
+                if (summary.isBlank()) summary = SafeContent.text(assessment.getMostLikelyCause(), 400);
+                if (!summary.isBlank()) ai.put("summary", summary);
+                if (!assessment.getRecommendedChecks().isEmpty())
+                    ai.put(
+                            "suggestedCheck",
+                            SafeContent.text(assessment.getRecommendedChecks().get(0), 240));
+            }
+        }
         MaterialFacts facts = new MaterialFacts(
                 boundary.path("firstBadVerified").asBoolean()
                         ? boundary.path("firstBad").path("runId").asText()

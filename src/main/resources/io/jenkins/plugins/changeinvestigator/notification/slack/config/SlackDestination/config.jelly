@@ -1,0 +1,16 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+  <f:invisibleEntry field="id"><f:textbox/></f:invisibleEntry>
+  <f:entry title="Destination name" field="name"><f:textbox/></f:entry>
+  <f:entry title="Workspace label" field="workspaceLabel"><f:textbox/></f:entry>
+  <f:entry title="Workspace ID" field="workspaceId"><f:textbox/></f:entry>
+  <f:entry title="Channel ID" field="channelId"><f:textbox/></f:entry>
+  <f:entry title="Bot secret text credential ID" field="credentialId"><f:textbox/></f:entry>
+  <f:entry title="Approved job or folder scope" field="scope" description="Exact job full name, or folder/** for descendants. This explicitly approves external disclosure to this Slack channel."><f:textbox/></f:entry>
+  <f:entry title="Enabled" field="enabled"><f:checkbox/></f:entry>
+  <f:advanced>
+    <f:entry title="Verified triage user or team ID (optional)" field="verifiedMentionId" description="Administrator-verified Slack U/W user ID or S user-group ID for this scope. Never paste an SCM name or email. Job mentions remain off by default."><f:textbox/></f:entry>
+  </f:advanced>
+  <f:entry title="Saved destination ID"><code>${instance.id}</code></f:entry>
+  <f:entry title="Channel validation"><j:choose><j:when test="${instance.verified}">Verified</j:when><j:otherwise>Save, then validate this destination before delivery.</j:otherwise></j:choose></f:entry>
+</j:jelly>

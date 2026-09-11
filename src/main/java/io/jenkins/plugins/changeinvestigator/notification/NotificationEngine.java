@@ -76,6 +76,22 @@ public final class NotificationEngine {
     /** No delivery destinations exist in Phase 1. Tests may supply opaque approved fake destinations. */
     public NotificationInvestigationRecord ingest(NotificationObservation input, List<UUID> destinations, long now)
             throws IOException {
+        return ingestConfigured(
+                input,
+                destinations.stream()
+                        .map(id -> new DestinationPolicy(id, 1, true, false))
+                        .toList(),
+                now);
+    }
+
+    public record DestinationPolicy(UUID id, long generation, boolean recovery, boolean aiUpdates) {
+        public DestinationPolicy {
+            if (id == null || generation < 1) throw new IllegalArgumentException("Invalid destination policy");
+        }
+    }
+
+    public NotificationInvestigationRecord ingestConfigured(
+            NotificationObservation input, List<DestinationPolicy> destinations, long now) throws IOException {
         if (destinations.size() > 10
                 || now < 0
                 || !jobId.toString().equals(input.context().jobId()))
@@ -168,6 +184,19 @@ public final class NotificationEngine {
             UUID caseId = previous == null
                     ? UUID.nameUUIDFromBytes(key.digest().getBytes(StandardCharsets.UTF_8))
                     : previous.investigationId();
+            if (previous != null
+                    && transition.eventType() == null
+                    && !ended(previous)
+                    && destinations.stream().anyMatch(DestinationPolicy::aiUpdates)
+                    && "AI_COMPLETE"
+                            .equals(input.display().path("ai").path("state").asText())
+                    && input.display().path("ai").path("summary").isTextual()
+                    && previous.events().stream()
+                            .noneMatch(
+                                    e -> e.snapshot().path("ai").path("summary").isTextual())) {
+                transition = new LifecycleReducer.Transition(
+                        transition.snapshot(), "AI_AVAILABLE", List.of(), false, "AI_AVAILABLE");
+            }
             var events = new ArrayList<NotificationEvent>(previous == null ? List.of() : previous.events());
             var destinationStates = new ArrayList<NotificationInvestigationRecord.DestinationState>(
                     previous == null ? List.of() : previous.destinations());
@@ -180,17 +209,24 @@ public final class NotificationEngine {
                         event(input, previous, caseId, key, transition, classification, now, sequence);
                 events.add(event);
                 UUID eventId = UUID.fromString(event.snapshot().path("eventId").asText());
-                for (UUID destination : destinations.stream().distinct().toList()) {
+                for (DestinationPolicy approved :
+                        destinations.stream().distinct().toList()) {
+                    UUID destination = approved.id();
+                    if ("RECOVERY_OBSERVED".equals(transition.eventType()) && !approved.recovery()) continue;
+                    if ("AI_AVAILABLE".equals(transition.eventType()) && !approved.aiUpdates()) continue;
                     var old = destinationStates.stream()
                             .filter(d -> d.destinationId().equals(destination))
                             .findFirst()
                             .orElse(null);
+                    if (old != null && old.generation() != approved.generation()) continue;
                     var policy = old == null ? SuppressionPolicy.State.empty() : old.policy();
                     SuppressionPolicy.Kind kind = transition.eventType().equals("INVESTIGATION_OPENED")
                             ? SuppressionPolicy.Kind.INITIAL
                             : transition.eventType().equals("RECOVERY_OBSERVED")
                                     ? SuppressionPolicy.Kind.RECOVERY
-                                    : SuppressionPolicy.Kind.MATERIAL;
+                                    : transition.eventType().equals("AI_AVAILABLE")
+                                            ? SuppressionPolicy.Kind.AI_AVAILABLE
+                                            : SuppressionPolicy.Kind.MATERIAL;
                     boolean admissionLimited = input.signature().quality() == FailureSignatureV1.Quality.UNRESOLVED
                             && (old == null
                                     || (!policy.initialAccepted()
@@ -202,8 +238,10 @@ public final class NotificationEngine {
                                     policy,
                                     eventId.toString(),
                                     kind,
-                                    input.facts().fingerprint(),
-                                    now);
+                                    input.facts().fingerprint()
+                                            + ("AI_AVAILABLE".equals(transition.eventType()) ? ":ai-available" : ""),
+                                    now,
+                                    approved.aiUpdates());
                     policyAudit.add(offered.reason());
                     List<OutboxIntent> intents = new ArrayList<>(old == null ? List.of() : old.intents());
                     String pendingId = offered.state().pending() == null
@@ -237,7 +275,8 @@ public final class NotificationEngine {
                     }
                     if (!admissionLimited && eventId.toString().equals(pendingId)) {
                         // The per-destination pending kind retains INITIAL even when this semantic event is an update.
-                        OutboxIntent queued = OutboxIntent.queued(caseId, eventId, destination, 1, 1, now);
+                        OutboxIntent queued =
+                                OutboxIntent.queued(caseId, eventId, destination, approved.generation(), 1, now);
                         long next = offered.eligibleAt() < 0 ? Long.MAX_VALUE : Math.max(now, offered.eligibleAt());
                         admissionBudget.reportUsage(jobId, measuredStoreBytes());
                         if (admissionBudget.reserve(
@@ -280,7 +319,11 @@ public final class NotificationEngine {
                     }
                     if (old != null) destinationStates.remove(old);
                     destinationStates.add(new NotificationInvestigationRecord.DestinationState(
-                            destination, 1, offered.state(), intents));
+                            destination,
+                            approved.generation(),
+                            offered.state(),
+                            intents,
+                            old == null ? List.of() : old.submissions()));
                 }
                 retainEventSnapshots(events, destinationStates);
             }
@@ -319,6 +362,58 @@ public final class NotificationEngine {
             ledger.markConsumed(
                     input.observationId(), caseId, transition.snapshot().revision());
             return record;
+        }
+    }
+
+    public NotificationInvestigationRecord updateDestination(
+            UUID caseId,
+            UUID destinationId,
+            java.util.function.UnaryOperator<NotificationInvestigationRecord.DestinationState> change,
+            String safeCode,
+            long now)
+            throws IOException {
+        synchronized (lock) {
+            var saved = store.load(caseId).orElseThrow(() -> new IOException("Notification case unavailable"));
+            var record = JSON.treeToValue(saved.aggregate(), NotificationInvestigationRecord.class);
+            if (!record.jobId().equals(jobId) || !record.investigationId().equals(caseId))
+                throw new IOException("Notification scope mismatch");
+            var states = new ArrayList<NotificationInvestigationRecord.DestinationState>(record.destinations());
+            int index = -1;
+            for (int i = 0; i < states.size(); i++)
+                if (states.get(i).destinationId().equals(destinationId)) index = i;
+            if (index < 0) throw new IOException("Notification destination unavailable");
+            var updated = change.apply(states.get(index));
+            if (!updated.destinationId().equals(destinationId))
+                throw new IOException("Notification destination changed");
+            states.set(index, updated);
+            var audit = new ArrayList<NotificationInvestigationRecord.Audit>(record.audit());
+            audit.add(new NotificationInvestigationRecord.Audit(
+                    safeCode, now, record.lifecycle().revision()));
+            while (audit.size() > 200) audit.remove(0);
+            var result = new NotificationInvestigationRecord(
+                    1,
+                    caseId,
+                    jobId,
+                    record.context(),
+                    record.signature(),
+                    record.key(),
+                    record.lifecycle(),
+                    record.semanticSequence(),
+                    record.aiState(),
+                    record.processedObservations(),
+                    record.events(),
+                    states,
+                    audit);
+            store.update(caseId, saved.revision(), ignored -> JSON.valueToTree(result));
+            for (var state : result.destinations())
+                for (var intent : state.intents()) {
+                    if (intent.state() == OutboxIntent.State.SENT
+                            || intent.state() == OutboxIntent.State.CANCELLED
+                            || intent.state() == OutboxIntent.State.FAILED_PERMANENT
+                            || intent.state() == OutboxIntent.State.SUPPRESSED)
+                        admissionBudget.release(intent.deliveryId());
+                }
+            return result;
         }
     }
 
@@ -416,6 +511,11 @@ public final class NotificationEngine {
                 .put("contextDigest", input.context().digest())
                 .put("lifecycleState", transition.snapshot().status().name())
                 .put("correlationStatus", classification.status().name());
+        if (event.path("ai").path("summary").isTextual()
+                && "AI_COMPLETE".equals(event.path("ai").path("state").asText())) {
+            ((ObjectNode) event.get("ai"))
+                    .put("evidenceRevision", transition.snapshot().revision());
+        }
         event.putObject("investigationKey")
                 .put("keyVersion", 1)
                 .put("digest", key.digest())

@@ -1,0 +1,20 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+  <f:section title="Build Change Investigator — Slack">
+    <f:block>
+      Slack delivery discloses investigation summaries outside Jenkins. Channel members may not have Jenkins Item.READ.
+      Approve only jobs and folders whose summaries may be shared with the selected channel.
+      Store the bot token in Jenkins Credentials as secret text; this configuration stores only its ID.
+    </f:block>
+    <f:entry title="Enable Slack investigation delivery" field="enabled"><f:checkbox default="false"/></f:entry>
+    <f:entry title="Approved destinations" field="destinations">
+      <f:repeatableProperty field="destinations" minimum="0" add="Add approved Slack destination"/>
+    </f:entry>
+    <f:entry title="Saved destination ID to validate"><f:textbox name="destinationId"/></f:entry>
+    <f:entry><f:validateButton title="Test Connection" progress="Validating..." method="testConnection" with="destinationId"/></f:entry>
+    <f:block>Save first. Test Connection uses auth.test and conversations.info without posting any message. Matching workspace, channel membership and bot identity are required. Slack channel posting restrictions can still prevent delivery.</f:block>
+    <f:entry title="Delivery status"><div>${descriptor.deliveryStatus}</div><a href="${rootURL}/bci-slack-delivery/">Review delivery status</a></f:entry>
+    <f:entry><f:validateButton title="Re-arm delivery for this controller boot" progress="Approving..." method="rearmDelivery" with=""/></f:entry>
+    <f:block>Review this controller and its pending work before re-arming after a restart or restore. An uncertain delivery outcome requires manual reconciliation; it is never automatically resent.</f:block>
+  </f:section>
+</j:jelly>
