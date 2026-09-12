@@ -551,65 +551,6 @@
           }
         }
       }
-    },
-    "evidenceRevision": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "humanReview": {
-      "required": [
-        "action",
-        "recordId",
-        "actorLabel",
-        "correctiveAction",
-        "validationBasis"
-      ],
-      "additionalProperties": false,
-      "type": "object",
-      "properties": {
-        "correctiveAction": {
-          "type": "string",
-          "maxLength": 400
-        },
-        "action": {
-          "enum": [
-            "CAUSE_CONFIRMED",
-            "CONFIRMATION_REVOKED",
-            "CONFIRMATION_CORRECTED",
-            "CANDIDATE_NOT_RELATED",
-            "INVESTIGATION_REOPENED"
-          ],
-          "type": "string"
-        },
-        "supersedesRecordId": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "maxLength": 36
-        },
-        "actorLabel": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "recordId": {
-          "$ref": "#/$defs/uuid"
-        },
-        "validationBasis": {
-          "type": "string",
-          "maxLength": 400
-        },
-        "candidateId": {
-          "$ref": "#/$defs/digest"
-        },
-        "assertionKind": {
-          "enum": [
-            "CAUSE",
-            "RESOLUTION"
-          ],
-          "type": "string"
-        }
-      }
     }
   },
   "allOf": [

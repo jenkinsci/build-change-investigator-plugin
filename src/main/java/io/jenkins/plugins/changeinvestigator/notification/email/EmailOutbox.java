@@ -279,12 +279,6 @@ public final class EmailOutbox {
                     new String(java.util.Base64.getDecoder().decode(mime), java.nio.charset.StandardCharsets.UTF_8);
             if (password != null && !password.isEmpty() && raw.contains(password))
                 return settleCancelled(engine, caseId, destination, claim, clock.millis());
-            if (!engine.submissionAllowed(
-                    caseId,
-                    destination,
-                    claim.intent().deliveryId(),
-                    claim.intent().leaseToken(),
-                    clock.millis())) return settleCancelled(engine, caseId, destination, claim, clock.millis());
             outcome = sender.send(fresh.get().settings(), target.recipient(), mime);
         } catch (RuntimeException | LinkageError e) {
             outcome = new EmailTransport.Outcome(EmailTransport.Status.UNKNOWN_OUTCOME, "ACCEPTANCE_UNKNOWN");
@@ -439,20 +433,7 @@ public final class EmailOutbox {
                                                 && i.state() == OutboxIntent.State.LEASED
                                                 && i.leaseToken()
                                                         .equals(claim.intent().leaseToken())
-                                        ? new OutboxIntent(
-                                                i.deliveryId(),
-                                                i.eventId(),
-                                                i.destinationId(),
-                                                i.destinationGeneration(),
-                                                i.rendererVersion(),
-                                                OutboxIntent.State.CANCELLED,
-                                                i.attempts(),
-                                                i.createdAt(),
-                                                i.nextAttemptAt(),
-                                                null,
-                                                0,
-                                                null,
-                                                "REVOKED_BEFORE_SUBMISSION")
+                                        ? safe(i.rejected(i.leaseToken(), false, now), "REVOKED_BEFORE_SUBMISSION")
                                         : i)
                                 .toList(),
                         state.submissions()),

@@ -269,12 +269,6 @@ public final class SlackOutbox {
             }
             String[] route = claim.snapshot().routing().split(":");
             ObjectNode payload = (ObjectNode) JSON.readTree(claim.snapshot().payload());
-            if (!engine.submissionAllowed(
-                    caseId,
-                    destination,
-                    claim.intent().deliveryId(),
-                    claim.intent().leaseToken(),
-                    clock.millis())) return settleCancelled(engine, caseId, destination, claim, clock.millis());
             outcome = sender.send(
                     fresh.get().token(),
                     target.workspace(),
@@ -436,20 +430,7 @@ public final class SlackOutbox {
                                                 && i.state() == OutboxIntent.State.LEASED
                                                 && i.leaseToken()
                                                         .equals(claim.intent().leaseToken())
-                                        ? new OutboxIntent(
-                                                i.deliveryId(),
-                                                i.eventId(),
-                                                i.destinationId(),
-                                                i.destinationGeneration(),
-                                                i.rendererVersion(),
-                                                OutboxIntent.State.CANCELLED,
-                                                i.attempts(),
-                                                i.createdAt(),
-                                                i.nextAttemptAt(),
-                                                null,
-                                                0,
-                                                null,
-                                                "REVOKED_BEFORE_SUBMISSION")
+                                        ? safe(i.rejected(i.leaseToken(), false, now), "REVOKED_BEFORE_SUBMISSION")
                                         : i)
                                 .toList(),
                         state.submissions()),

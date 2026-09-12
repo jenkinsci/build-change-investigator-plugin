@@ -24,51 +24,8 @@ public record NotificationInvestigationRecord(
         List<String> processedObservations,
         List<NotificationEvent> events,
         List<DestinationState> destinations,
-        List<Audit> audit,
-        io.jenkins.plugins.changeinvestigator.notification.feedback.FeedbackState feedback) {
-    public NotificationInvestigationRecord(
-            int schemaVersion,
-            UUID investigationId,
-            UUID jobId,
-            ExecutionContextV1 context,
-            FailureSignatureV1 signature,
-            InvestigationKeyV1 key,
-            LifecycleReducer.Snapshot lifecycle,
-            long semanticSequence,
-            String aiState,
-            List<String> processedObservations,
-            List<NotificationEvent> events,
-            List<DestinationState> destinations,
-            List<Audit> audit) {
-        this(
-                schemaVersion,
-                investigationId,
-                jobId,
-                context,
-                signature,
-                key,
-                lifecycle,
-                semanticSequence,
-                aiState,
-                processedObservations,
-                events,
-                destinations,
-                audit,
-                io.jenkins.plugins.changeinvestigator.notification.feedback.FeedbackState.empty());
-    }
-
-    public long caseRevision() {
-        return Math.addExact(lifecycle.revision(), feedback.records().size());
-    }
-
-    public long evidenceRevision() {
-        return lifecycle.revision();
-    }
-
+        List<Audit> audit) {
     public NotificationInvestigationRecord {
-        feedback = feedback == null
-                ? io.jenkins.plugins.changeinvestigator.notification.feedback.FeedbackState.empty()
-                : feedback;
         if (schemaVersion != 1
                 || investigationId == null
                 || jobId == null
@@ -90,20 +47,6 @@ public record NotificationInvestigationRecord(
                 || !key.contextDigest().equals(context.digest())
                 || !java.util.Objects.equals(key.signatureDigest(), signature.digest()))
             throw new IllegalArgumentException("Notification key mismatch");
-        long aggregateRevision =
-                Math.addExact(lifecycle.revision(), feedback.records().size());
-        for (var action : feedback.records()) {
-            if (action.beforeRevision() >= aggregateRevision
-                    || action.afterRevision() > aggregateRevision
-                    || action.request().evidenceRevision() > lifecycle.revision()
-                    || action.confirmation() != null
-                            && !action.confirmation().investigationId().equals(investigationId)
-                    || !destinations.stream()
-                            .map(DestinationState::destinationId)
-                            .toList()
-                            .containsAll(action.request().destinations()))
-                throw new IllegalArgumentException("Feedback aggregate scope mismatch");
-        }
         for (NotificationEvent event : events) {
             var snapshot = event.snapshot();
             if (!snapshot.path("jobId").asText().equals(jobId.toString())

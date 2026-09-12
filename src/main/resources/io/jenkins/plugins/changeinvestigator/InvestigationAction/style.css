@@ -403,15 +403,3 @@
 .bci-boundary[data-comparison="true"] .bci-build a { color: var(--bci-link); }
 .bci:has(.bci-result[data-result="SUCCESS"]) .bci-failure { border-color: var(--bci-line); background: var(--table-background); }
 .bci:has(.bci-result[data-result="SUCCESS"]) .bci-failure pre { color: var(--text-color); }
-
-.bci-human { border-left: 3px solid var(--bci-line); padding: 10px 14px; margin: 14px 0; overflow-wrap: anywhere; }
-.bci-human-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.bci .bci-paragraph { margin: 8px 0 12px; }
-.bci-human-strip .bci-paragraph { margin: 4px 0 0; }
-.bci-review { max-width: 850px; }
-.bci-review form { max-width: 680px; }
-.bci-review label { display: block; font-weight: 600; margin: 18px 0 7px; }
-.bci-review .jenkins-select, .bci-review .jenkins-input { width: 100%; max-width: 100%; }
-.bci-review-history { margin-top: 28px; }
-.bci-review [hidden] { display: none !important; }
-@media(max-width: 760px) { .bci-human-strip { align-items: flex-start; flex-direction: column; } .bci-human-strip .bci-actions { flex-wrap: wrap; } }
