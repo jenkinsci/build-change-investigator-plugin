@@ -288,4 +288,60 @@ public class SlackRendererTest {
         assertTrue(text.contains("src/main_java/Collateral_Trade.java"));
         assertFalse(text.contains("is＿portfolio＿im"));
     }
+
+    @Test
+    void humanUpdatesPreserveReadOnlyThreadAndDistinguishCorrection() throws Exception {
+        ObjectNode e = fixture("confirmed");
+        ((ObjectNode) e.path("confirmation")).put("note", "PRIVATE_AUDIT_NOTE");
+        ObjectNode closure = RENDERER.render(NotificationEvent.freeze(e), SlackRenderer.Presentation.INITIAL_BRIEF);
+        assertTrue(closure.toString().contains("Confirmed resolution"));
+        assertTrue(closure.toString().contains("Confirmed by:"));
+        assertFalse(closure.toString().contains("PRIVATE_AUDIT_NOTE"));
+        assertFalse(closure.toString().contains("New investigation"));
+        e.put("eventType", "CORRECTION").put("lifecycleState", "RECOVERED").putNull("confirmation");
+        ((ObjectNode) e.path("recovery")).put("assessment", "FIX_UNKNOWN");
+        e.putObject("humanReview")
+                .put("action", "CONFIRMATION_REVOKED")
+                .put("assertionKind", "RESOLUTION")
+                .put("recordId", java.util.UUID.randomUUID().toString())
+                .put("supersedesRecordId", java.util.UUID.randomUUID().toString())
+                .put("actorLabel", "Synthetic <!channel> reviewer")
+                .put("correctiveAction", "Previous resolution revoked; fix remains unknown.")
+                .put("validationBasis", "The affected check was not sufficient to establish the asserted fix.");
+        ObjectNode correction = RENDERER.render(NotificationEvent.freeze(e));
+        assertTrue(correction.toString().contains("Previous resolution confirmation is no longer current"));
+        assertFalse(correction.toString().contains("<!channel>"));
+        assertFalse(correction.toString().contains("Confirmed resolution"));
+        for (JsonNode block : correction.path("blocks"))
+            for (JsonNode element : block.path("elements"))
+                if ("button".equals(element.path("type").asText())) assertTrue(element.has("url"));
+        Path directory = Path.of("target/slack-renderer-fixtures");
+        Files.createDirectories(directory);
+        Files.writeString(directory.resolve("20-human-resolution.json"), closure.toPrettyString());
+        Files.writeString(directory.resolve("21-human-correction.json"), correction.toPrettyString());
+    }
+
+    @Test
+    void humanRevisionDoesNotInvalidateCurrentEvidenceInterpretation() throws Exception {
+        ObjectNode e = strong();
+        completed(e);
+        e.put("evidenceRevision", e.path("caseRevision").asLong()).put("caseRevision", 10);
+        assertTrue(RENDERER.render(NotificationEvent.freeze(e)).toString().contains("AI interpretation"));
+        e.put("evidenceRevision", 11);
+        assertFalse(RENDERER.render(NotificationEvent.freeze(e)).toString().contains("The change may have introduced"));
+        e.put("eventType", "INVESTIGATION_UPDATED");
+        e.putObject("humanReview")
+                .put("action", "CAUSE_CONFIRMED")
+                .put("recordId", java.util.UUID.randomUUID().toString())
+                .putNull("supersedesRecordId")
+                .put("actorLabel", "Synthetic reviewer")
+                .put("correctiveAction", "The source reference caused the compiler failure.")
+                .put("validationBasis", "Reproduced the affected compiler failure.");
+        String root = RENDERER.render(NotificationEvent.freeze(e), SlackRenderer.Presentation.INITIAL_BRIEF)
+                .toString();
+        assertTrue(root.contains("New investigation"));
+        assertTrue(root.contains("Observed failure"));
+        assertTrue(root.contains("Human review"));
+        assertTrue(root.contains("Cause confirmed"));
+    }
 }

@@ -78,7 +78,9 @@ class EmailRendererTest {
                 || name.startsWith("15-")
                 || name.startsWith("16-")
                 || name.startsWith("17-")
-                || name.startsWith("18-");
+                || name.startsWith("18-")
+                || name.startsWith("20-")
+                || name.startsWith("21-");
         String root = update
                 ? EmailMessage.messageId(
                         UUID.nameUUIDFromBytes("11-fieldnote-strong".getBytes(StandardCharsets.UTF_8)),
@@ -364,5 +366,64 @@ class EmailRendererTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new EmailRenderer(URI.create("https://user:pass@example.invalid/")));
+    }
+
+    @Test
+    void humanResolutionAndCorrectionRemainCompactPrivateAndReadOnly() throws Exception {
+        ObjectNode e = fixture("confirmed");
+        ((ObjectNode) e.path("confirmation")).put("note", "PRIVATE_AUDIT_NOTE");
+        var closure = RENDERER.render(NotificationEvent.freeze(e), EmailRenderer.Presentation.INITIAL_FIELDNOTE);
+        assertTrue(closure.plainText().contains("Confirmed resolution"));
+        assertTrue(closure.plainText().contains("Confirmed by:"));
+        assertTrue(closure.plainText().contains("Validation:"));
+        assertFalse(closure.html().contains("PRIVATE_AUDIT_NOTE"));
+        export("20-human-resolution", e, closure);
+        ((ObjectNode) e.path("confirmation"))
+                .put("actorLabel", "Synthetic reviewer " + "A".repeat(80))
+                .put("validationBasis", "The affected compilation check passed with the reviewed corrective action.");
+        assertTrue(render(e).plainText().contains("Validation: The affected compilation check passed"));
+        e.put("eventType", "CORRECTION").put("lifecycleState", "RECOVERED").putNull("confirmation");
+        ((ObjectNode) e.path("recovery")).put("assessment", "FIX_UNKNOWN");
+        e.putObject("humanReview")
+                .put("action", "CONFIRMATION_REVOKED")
+                .put("assertionKind", "RESOLUTION")
+                .put("recordId", UUID.randomUUID().toString())
+                .put("supersedesRecordId", UUID.randomUUID().toString())
+                .put("actorLabel", "Synthetic reviewer <script>alert(1)</script>")
+                .put("correctiveAction", "Previous resolution revoked; fix remains unknown.")
+                .put("validationBasis", "The affected check was not sufficient to establish the asserted fix.");
+        var correction = RENDERER.render(NotificationEvent.freeze(e), EmailRenderer.Presentation.INITIAL_FIELDNOTE);
+        assertTrue(correction.plainText().contains("Previous resolution confirmation is no longer current"));
+        assertFalse(correction.plainText().contains("Confirmed resolution"));
+        assertFalse(correction.html().contains("<script>"));
+        assertFalse(correction.html().contains("<form"));
+        assertTrue(correction.html().contains("Open Investigation"));
+        export("21-human-correction", e, correction);
+    }
+
+    @Test
+    void humanCauseDoesNotConfirmRecoveryAndAiKeepsEvidenceRevision() throws Exception {
+        ObjectNode e = strong();
+        completed(e);
+        e.put("evidenceRevision", e.path("caseRevision").asLong()).put("caseRevision", 10);
+        assertTrue(render(e).plainText().contains("AI INTERPRETATION"));
+        e.put("eventType", "INVESTIGATION_UPDATED");
+        e.putObject("humanReview")
+                .put("action", "CAUSE_CONFIRMED")
+                .put("recordId", UUID.randomUUID().toString())
+                .putNull("supersedesRecordId")
+                .put("actorLabel", "Synthetic reviewer")
+                .put("correctiveAction", "The changed reference caused the compiler failure.")
+                .put("validationBasis", "Reproduced the error with the change and without it.");
+        var result = render(e);
+        assertTrue(result.plainText().contains("Confirmed cause"));
+        assertTrue(result.plainText().contains("does not establish recovery or a fix"));
+        assertFalse(result.plainText().contains("Confirmed resolution"));
+        assertFalse(result.plainText().contains("AI INTERPRETATION"));
+        var root = RENDERER.render(NotificationEvent.freeze(e), EmailRenderer.Presentation.INITIAL_FIELDNOTE);
+        assertTrue(root.plainText().contains("New investigation"));
+        assertTrue(root.plainText().contains("OBSERVED · FAILURE"));
+        assertTrue(root.plainText().contains("HUMAN REVIEW"));
+        assertTrue(root.plainText().contains("Cause confirmed"));
     }
 }

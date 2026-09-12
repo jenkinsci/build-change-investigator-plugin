@@ -45,7 +45,17 @@ public final class SlackRenderer {
         Message m = new Message();
         String job = escape(t(e, "jobLabel"), 90, true);
         String current = "#" + e.path("build").path("number").asInt();
-        if (presentation == Presentation.INITIAL_BRIEF) {
+        if (e.path("humanReview").isObject()
+                && "INVESTIGATION_UPDATED".equals(t(e, "eventType"))
+                && presentation == Presentation.INITIAL_BRIEF) {
+            brief(m, e, job, current);
+            humanAnnotation(m, e);
+        } else if (e.path("humanReview").isObject()
+                && List.of("INVESTIGATION_UPDATED", "CORRECTION").contains(t(e, "eventType"))) {
+            humanUpdate(m, e, job, current);
+        } else if (List.of("RECOVERY_OBSERVED", "RESOLUTION_CONFIRMED").contains(t(e, "eventType"))) {
+            closure(m, e, job, presentation == Presentation.INITIAL_BRIEF);
+        } else if (presentation == Presentation.INITIAL_BRIEF) {
             brief(m, e, job, current);
         } else if (presentation == Presentation.CONTINUING_PREVIEW) {
             m.header("Continuing investigation · " + job + " " + current);
@@ -73,7 +83,7 @@ public final class SlackRenderer {
                     m.context("Recovery and a causal fix have not been established by this candidate.");
                     actions(m, e, false);
                 }
-                case "RECOVERY_OBSERVED", "RESOLUTION_CONFIRMED" -> closure(m, e, job);
+                case "RECOVERY_OBSERVED", "RESOLUTION_CONFIRMED" -> closure(m, e, job, false);
                 case "INVESTIGATION_UPDATED", "CORRECTION", "CASE_CLOSED" -> {
                     m.header("Investigation updated · " + job + " " + current);
                     List<String> changes = new ArrayList<>();
@@ -97,6 +107,58 @@ public final class SlackRenderer {
                 default -> throw new IllegalArgumentException("Unsupported investigation event");
             }
         return m.finish();
+    }
+
+    private static void humanAnnotation(Message m, JsonNode e) {
+        JsonNode review = e.path("humanReview");
+        String label = "CAUSE_CONFIRMED".equals(t(review, "action"))
+                ? "Cause confirmed"
+                : "CANDIDATE_NOT_RELATED".equals(t(review, "action"))
+                        ? "Candidate marked not related"
+                        : "Investigation reopened";
+        m.context("*Human review:* " + label + " · " + escape(t(review, "actorLabel"), 100, false)
+                + "\nHuman judgment supplements the original evidence; it does not establish a fix.");
+        if (!t(review, "correctiveAction").isBlank()
+                || !t(review, "validationBasis").isBlank())
+            m.section("*Review:* " + escape(t(review, "correctiveAction"), 240, false) + "\n*Validation:* "
+                    + escape(t(review, "validationBasis"), 200, false));
+    }
+
+    private void humanUpdate(Message m, JsonNode e, String job, String current) {
+        JsonNode review = e.path("humanReview");
+        boolean correction = "CORRECTION".equals(t(e, "eventType"));
+        boolean cause = "CAUSE_CONFIRMED".equals(t(review, "action"));
+        String assertion = "RESOLUTION".equals(t(review, "assertionKind"))
+                ? "resolution confirmation"
+                : "CAUSE".equals(t(review, "assertionKind")) ? "cause confirmation" : "confirmation";
+        String outcome = "CONFIRMATION_REVOKED".equals(t(review, "action"))
+                ? "The previous " + assertion + " was revoked. Review the retained evidence in Jenkins."
+                : t(review, "correctiveAction");
+        m.header((correction ? "Correction" : cause ? "Cause confirmed" : "Human review updated") + " · " + job + " "
+                + current);
+        m.context("Human review · authenticated Jenkins action");
+        if (correction)
+            m.section(
+                    "*Previous " + assertion
+                            + " is no longer current.*\nReview the corrected human outcome in Jenkins. Original evidence and audit history are retained.");
+        else if (cause)
+            m.section("*Confirmed cause · human review*\nThis assertion does not establish recovery or a fix.");
+        else
+            m.section(
+                    "CANDIDATE_NOT_RELATED".equals(t(review, "action"))
+                            ? "*Candidate marked not related · human review*\nOriginal deterministic evidence is retained."
+                            : "*Investigation reopened · human review*\nThe unresolved investigation remains open.");
+        m.section("*Reviewed by:* " + escape(t(review, "actorLabel"), 100, false)
+                + "\n*" + (correction ? "Current outcome" : cause ? "Cause" : "Review") + ":* "
+                + escape(outcome, 300, false)
+                + "\n*Validation:* " + escape(t(review, "validationBasis"), 240, false));
+        for (JsonNode candidate : e.path("topCandidates"))
+            if (t(candidate, "candidateId").equals(t(review, "candidateId"))
+                    && !t(review, "candidateId").isBlank())
+                m.context("*Reviewed change:* `" + code(t(candidate, "path"), 180, true)
+                        + "` · Original evidence retained.");
+        m.context("*Observed failure:* " + signal(e, 420));
+        actions(m, e, false);
     }
 
     private void brief(Message m, JsonNode e, String job, String current) {
@@ -187,7 +249,7 @@ public final class SlackRenderer {
         if (build != null) m.context("<" + build + "console|Console Output>");
     }
 
-    private void closure(Message m, JsonNode e, String job) {
+    private void closure(Message m, JsonNode e, String job, boolean root) {
         JsonNode recovery = e.path("recovery");
         int number = recovery.path("build")
                 .path("number")
@@ -200,14 +262,17 @@ public final class SlackRenderer {
             m.section("Affected-path coverage is not verified. This successful build does not establish recovery.");
         } else {
             m.header("Recovered in #" + number + " · " + job);
+            if (root) m.context(boundary(e));
             m.context("Observed recovery build: #" + number + " SUCCESS");
             String assessment = t(recovery, "assessment");
             if ("CONFIRMED_FIX".equals(assessment)
                     && "CONFIRMED_RESOLUTION".equals(t(e, "lifecycleState"))
                     && e.path("confirmation").isObject()) {
                 JsonNode c = e.path("confirmation");
-                m.section("*Confirmed fix*\n" + escape(t(c, "correctiveAction"), 300, false) + "\nConfirmation: "
-                        + escape(t(c, "actorLabel"), 100, false) + " · " + escape(t(c, "validationBasis"), 220, false));
+                m.section("*Confirmed resolution · human review*\nCorrective action: "
+                        + escape(t(c, "correctiveAction"), 300, false) + "\nConfirmed by: "
+                        + escape(t(c, "actorLabel"), 100, false) + "\nValidation: "
+                        + escape(t(c, "validationBasis"), 220, false));
             } else if ("LIKELY_RECOVERY_CHANGE".equals(assessment)
                     && !t(recovery, "basis").isBlank()) {
                 m.section("*Likely recovery change*\n" + recoveryIdentity(e) + escape(t(recovery, "basis"), 400, false)
@@ -249,7 +314,8 @@ public final class SlackRenderer {
         JsonNode a = e.path("ai");
         return "AI_COMPLETE".equals(t(a, "state"))
                 && a.path("evidenceRevision").asLong(-1)
-                        == e.path("caseRevision").asLong()
+                        == e.path("evidenceRevision")
+                                .asLong(e.path("caseRevision").asLong())
                 && !t(a, "summary").isBlank();
     }
 

@@ -1,6 +1,7 @@
 <?jelly escape-by-default='true'?>
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout" xmlns:f="/lib/form" xmlns:t="/lib/hudson">
   <j:set var="case" value="${it.view}"/>
+  <j:set var="review" value="${it.feedback}"/>
   <l:layout title="${it.displayName} - ${it.run.fullDisplayName}">
     <l:side-panel>
       <details class="bci-native-navigation" open="open">
@@ -66,6 +67,16 @@
             </details>
           </div>
         </section>
+        <j:if test="${review ne null}">
+          <j:if test="${!empty(review.deliveryWarning)}"><div class="bci-human" role="status">${review.deliveryWarning}</div></j:if>
+          <div class="bci-human bci-human-strip">
+            <div><span class="bci-label">HUMAN REVIEW</span><div class="bci-paragraph">${review.summary}<j:if test="${review.muted}"> · Notifications muted</j:if></div></div>
+            <div class="bci-actions">
+              <j:if test="${review.triage}"><a class="jenkins-button" href="${rootURL}/${review.url}&amp;reviewAction=ACKNOWLEDGE">Acknowledge</a></j:if>
+              <a class="jenkins-button" href="${rootURL}/${review.url}">Review / More…</a>
+            </div>
+          </div>
+        </j:if>
         <div class="bci-layout">
           <article>
             <section id="bci-e2">
@@ -111,7 +122,7 @@
                 <p class="bci-unmatched">
                   <j:forEach var="change" items="${case.ranked}" varStatus="loop">
                     <j:if test="${loop.index lt 3}">
-                      <span>${change.path}</span>
+                      <span>${change.path}<j:if test="${review ne null}"><j:set var="weakReview" value="${review.candidateReview(change.path, change.commit)}"/><j:if test="${!empty(weakReview)}"><br/><small>Human review: ${weakReview}</small></j:if></j:if></span>
                     </j:if>
                   </j:forEach>
                 </p>
@@ -141,6 +152,11 @@
                       <small>${case.hasAfter(change) ? "Build-time manifest observation" : "SCM revision:"} ${case.hasAfter(change) ? "" : change.commit}</small>
                     </div>
                   </div>
+                  <j:if test="${review ne null}">
+                    <j:set var="candidateReview" value="${review.candidateReview(change.path, change.commit)}"/>
+                    <j:if test="${!empty(candidateReview)}"><div class="bci-human"><span class="bci-label">HUMAN REVIEW</span><br/>${candidateReview}</div></j:if>
+                    <j:if test="${review.triage}"><a href="${rootURL}/${review.url}&amp;reviewAction=NOT_RELATED&amp;candidateId=${review.candidateId(change.path, change.commit)}">Mark candidate not related</a></j:if>
+                  </j:if>
                   <div class="bci-source">DERIVED · ${change.strength}</div>
                   <p>${change.reason}</p>
                   <p class="bci-muted">

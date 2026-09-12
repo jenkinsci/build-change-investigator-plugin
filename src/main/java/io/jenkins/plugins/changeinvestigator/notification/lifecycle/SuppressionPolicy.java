@@ -127,6 +127,36 @@ public final class SuppressionPolicy {
         return evaluate(updated, now);
     }
 
+    /** Caller must prove this correction retracts an assertion accepted by this exact destination. */
+    public static Decision offerCriticalCorrection(State state, String eventId, String fingerprint, long now) {
+        State unmuted = new State(
+                state.initialAccepted(),
+                state.recoveryAccepted(),
+                state.confirmationAccepted(),
+                state.materialLifetime(),
+                state.materialAcceptedAt(),
+                state.lastMaterialAt(),
+                state.lastCorrectionAt(),
+                0,
+                state.lastAcceptedFingerprint(),
+                state.pending());
+        Decision offered = offer(unmuted, eventId, Kind.CORRECTION, fingerprint, now);
+        State value = offered.state();
+        return evaluate(
+                new State(
+                        value.initialAccepted(),
+                        value.recoveryAccepted(),
+                        value.confirmationAccepted(),
+                        value.materialLifetime(),
+                        value.materialAcceptedAt(),
+                        value.lastMaterialAt(),
+                        value.lastCorrectionAt(),
+                        state.mutedUntil(),
+                        value.lastAcceptedFingerprint(),
+                        value.pending()),
+                now);
+    }
+
     public static Decision evaluate(State state, long now) {
         Objects.requireNonNull(state);
         requireTime(now);
@@ -134,7 +164,7 @@ public final class SuppressionPolicy {
         if (pending == null) {
             return new Decision(state, false, -1, "NO_PENDING_EVENT");
         }
-        if (state.mutedUntil() > now) {
+        if (state.mutedUntil() > now && pending.kind() != Kind.CORRECTION) {
             return new Decision(withPending(state, null), false, -1, "MUTED");
         }
         long at;

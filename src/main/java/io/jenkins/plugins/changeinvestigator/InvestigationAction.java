@@ -153,6 +153,18 @@ public class InvestigationAction implements RunAction2, org.kohsuke.stapler.Stap
         this.run = r;
     }
 
+    /** Existing persisted human review only; comparison and historical pages remain read-only. */
+    public io.jenkins.plugins.changeinvestigator.notification.feedback.FeedbackView getFeedback() {
+        if (run == null) return null;
+        run.getParent().checkPermission(hudson.model.Item.READ);
+        if (getView().isComparison()) return null;
+        try {
+            return io.jenkins.plugins.changeinvestigator.notification.feedback.FeedbackView.forRun(run);
+        } catch (java.io.IOException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     public Run<?, ?> getRun() {
         return run;
     }

@@ -54,8 +54,11 @@ public final class EmailRenderer {
             throw new IllegalArgumentException("Invalid email subject input");
         String job = bounded(or(rawJob, "Build investigation"), 100, true);
         boolean recovery = List.of("RECOVERY_OBSERVED", "RESOLUTION_CONFIRMED").contains(type);
-        boolean initial =
-                !recovery && ("INVESTIGATION_OPENED".equals(type) || presentation == Presentation.INITIAL_FIELDNOTE);
+        boolean human = e.path("humanReview").isObject()
+                && List.of("INVESTIGATION_UPDATED", "CORRECTION").contains(type);
+        boolean initial = !recovery
+                && !"CORRECTION".equals(type)
+                && ("INVESTIGATION_OPENED".equals(type) || presentation == Presentation.INITIAL_FIELDNOTE);
         boolean preview = presentation == Presentation.CONTINUING_PREVIEW;
         int number = recovery
                 ? e.path("recovery")
@@ -66,6 +69,12 @@ public final class EmailRenderer {
         String heading = preview
                 ? "Continuing investigation"
                 : recovery ? "Recovered" : initial ? "New investigation" : "Investigation update";
+        if (human && !initial)
+            heading = "CORRECTION".equals(type)
+                    ? "Correction"
+                    : "CAUSE_CONFIRMED".equals(t(e.path("humanReview"), "action"))
+                            ? "Cause confirmed"
+                            : "Human review updated";
         if (recovery && !verifiedRecovery(e)) heading = "Successful build — recovery unverified";
         String subject = "[BCI] " + job + " #" + number + " — "
                 + (preview
@@ -84,8 +93,11 @@ public final class EmailRenderer {
             m.text("Investigation unchanged. No material evidence update.", 14, "#354052", false, 160);
             m.text("Next check unchanged. Preview only; delivery suppressed by default.", 12, "#657184", false, 160);
             actions(m, e, false);
+        } else if (human && !initial) {
+            humanUpdate(m, e);
         } else if (initial) {
             fieldnote(m, e);
+            if (human) humanAnnotation(m, e);
         } else if (recovery) {
             recovery(m, e, number, presentation == Presentation.INITIAL_FIELDNOTE);
         } else if (List.of("INVESTIGATION_UPDATED", "CORRECTION", "CASE_CLOSED", "AI_AVAILABLE", "RECOVERY_CANDIDATE")
@@ -93,6 +105,74 @@ public final class EmailRenderer {
             update(m, e);
         } else throw new IllegalArgumentException("Unsupported investigation event");
         return m.finish(subject);
+    }
+
+    private static void humanAnnotation(Message m, JsonNode e) {
+        JsonNode review = e.path("humanReview");
+        String label = "CAUSE_CONFIRMED".equals(t(review, "action"))
+                ? "Cause confirmed"
+                : "CANDIDATE_NOT_RELATED".equals(t(review, "action"))
+                        ? "Candidate marked not related"
+                        : "Investigation reopened";
+        m.label("HUMAN REVIEW");
+        m.text(label + " · " + t(review, "actorLabel"), 13, "#354052", true, 150);
+        m.text(
+                "Human judgment supplements the original evidence; it does not establish a fix.",
+                12,
+                "#657184",
+                false,
+                180);
+        if (!t(review, "correctiveAction").isBlank())
+            m.text("Review: " + t(review, "correctiveAction"), 13, "#354052", false, 220);
+        if (!t(review, "validationBasis").isBlank())
+            m.text("Validation: " + t(review, "validationBasis"), 12, "#657184", false, 200);
+    }
+
+    private void humanUpdate(Message m, JsonNode e) {
+        JsonNode review = e.path("humanReview");
+        boolean correction = "CORRECTION".equals(t(e, "eventType"));
+        m.label("HUMAN REVIEW");
+        boolean cause = "CAUSE_CONFIRMED".equals(t(review, "action"));
+        String assertion = "RESOLUTION".equals(t(review, "assertionKind"))
+                ? "resolution confirmation"
+                : "CAUSE".equals(t(review, "assertionKind")) ? "cause confirmation" : "confirmation";
+        String outcome = "CONFIRMATION_REVOKED".equals(t(review, "action"))
+                ? "The previous " + assertion + " was revoked. Review the retained evidence in Jenkins."
+                : t(review, "correctiveAction");
+        m.text(
+                correction
+                        ? "Previous " + assertion + " is no longer current."
+                        : cause
+                                ? "Confirmed cause — human review."
+                                : "CANDIDATE_NOT_RELATED".equals(t(review, "action"))
+                                        ? "Candidate marked not related — human review."
+                                        : "Investigation reopened — human review.",
+                15,
+                "#354052",
+                true,
+                160);
+        m.text(
+                correction
+                        ? "Original evidence and audit history are retained. Review the corrected outcome in Jenkins."
+                        : "This assertion does not establish recovery or a fix.",
+                12,
+                "#657184",
+                false,
+                200);
+        m.text("Reviewed by: " + t(review, "actorLabel"), 13, "#354052", false, 130);
+        m.text(
+                (correction ? "Current outcome: " : cause ? "Cause: " : "Review: ") + outcome,
+                13,
+                "#354052",
+                false,
+                260);
+        m.text("Validation: " + t(review, "validationBasis"), 12, "#657184", false, 240);
+        for (JsonNode candidate : e.path("topCandidates"))
+            if (t(candidate, "candidateId").equals(t(review, "candidateId"))
+                    && !t(review, "candidateId").isBlank())
+                m.text("Reviewed change: " + bounded(t(candidate, "path"), 180, true), 12, "#657184", false, 210);
+        m.text("Observed failure: " + signal(e, 160), 12, "#657184", false, 180);
+        actions(m, e, false);
     }
 
     private void fieldnote(Message m, JsonNode e) {
@@ -275,14 +355,10 @@ public final class EmailRenderer {
                     && c.isObject()
                     && !t(c, "actorLabel").isBlank()
                     && !t(c, "validationBasis").isBlank()) {
-                m.text("Confirmed fix", 16, "#28694b", true, 100);
-                m.text("Confirmation: " + t(c, "correctiveAction"), 12, "#657184", false, 160);
-                m.text(
-                        "Provenance: " + t(c, "actorLabel") + " · " + t(c, "validationBasis"),
-                        12,
-                        "#657184",
-                        false,
-                        160);
+                m.text("Confirmed resolution · human review", 16, "#28694b", true, 100);
+                m.text("Corrective action: " + t(c, "correctiveAction"), 12, "#657184", false, 160);
+                m.text("Confirmed by: " + t(c, "actorLabel"), 12, "#657184", false, 130);
+                m.text("Validation: " + t(c, "validationBasis"), 12, "#657184", false, 220);
             } else if ("LIKELY_RECOVERY_CHANGE".equals(t(r, "assessment"))
                     && !t(r, "basis").isBlank()) {
                 m.text("Likely recovery change — not proof.", 15, "#28694b", true, 100);
@@ -356,7 +432,8 @@ public final class EmailRenderer {
         return "AI_COMPLETE".equals(t(a, "state"))
                 && !t(a, "summary").isBlank()
                 && a.path("evidenceRevision").asLong(-1)
-                        == e.path("caseRevision").asLong();
+                        == e.path("evidenceRevision")
+                                .asLong(e.path("caseRevision").asLong());
     }
 
     private static boolean verifiedRecovery(JsonNode e) {
