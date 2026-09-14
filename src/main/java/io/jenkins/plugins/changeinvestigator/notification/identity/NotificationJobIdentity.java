@@ -10,6 +10,7 @@ import java.util.UUID;
 public final class NotificationJobIdentity extends JobProperty<Job<?, ?>> {
     private String id;
     private boolean quarantined;
+    private transient boolean provisionalXmlLoad;
 
     public NotificationJobIdentity() {
         this(UUID.randomUUID().toString());
@@ -18,6 +19,17 @@ public final class NotificationJobIdentity extends JobProperty<Job<?, ?>> {
     NotificationJobIdentity(String id) {
         UUID.fromString(id);
         this.id = id;
+    }
+
+    @Override
+    protected void setOwner(Job<?, ?> owner) {
+        super.setOwner(owner);
+        // XML loading is provisional, not proof that Jenkins will complete a native copy.
+        provisionalXmlLoad = hudson.model.Items.currentlyUpdatingByXml();
+    }
+
+    boolean isProvisionalXmlLoad() {
+        return provisionalXmlLoad;
     }
 
     public String getId() {

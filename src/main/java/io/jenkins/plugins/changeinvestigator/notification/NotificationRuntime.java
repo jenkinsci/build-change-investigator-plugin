@@ -6,6 +6,7 @@ import hudson.model.Job;
 import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.model.listeners.RunListener;
+import hudson.security.ACL;
 import io.jenkins.plugins.changeinvestigator.notification.identity.StableIdentities;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -100,7 +101,7 @@ public final class NotificationRuntime extends RunListener<Run<?, ?>> {
             String name = run.getParent().getFullName();
             long before = run.getNumber() - 1L;
             workers.execute(() -> {
-                try {
+                try (var ignored = ACL.as2(ACL.SYSTEM2)) {
                     Job<?, ?> job = Jenkins.get().getItemByFullName(name, Job.class);
                     if (job != null) activateApproved(job, before);
                 } catch (IOException | RuntimeException | LinkageError e) {
@@ -152,7 +153,7 @@ public final class NotificationRuntime extends RunListener<Run<?, ?>> {
     }
 
     private void process(String name) {
-        try {
+        try (var ignored = ACL.as2(ACL.SYSTEM2)) {
             Job<?, ?> job = Jenkins.get().getItemByFullName(name, Job.class);
             if (job == null || !armed(job)) return;
             String jobId = StableIdentities.jobId(job);
