@@ -1,5 +1,6 @@
 package io.jenkins.plugins.changeinvestigator.slack.lifecycle;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.jenkins.plugins.changeinvestigator.investigation.FailureSignal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -17,7 +18,10 @@ public final class EpisodeEngine {
         public int version = 1;
         public int lastBuild;
         public int optInAfter = -1;
-        public String configKey;
+        // SHA-256 of non-secret routing/configuration metadata. Keep the existing JSON property.
+        @JsonProperty("configKey")
+        public String configurationDigest;
+
         public String safeStatus = "";
         public long nextPreflight;
         public Episode active;
@@ -37,7 +41,10 @@ public final class EpisodeEngine {
         public String context;
         public String routeTeam;
         public String credentialId;
-        public String configKey;
+        // Same non-secret configuration digest captured when the episode was created.
+        @JsonProperty("configKey")
+        public String configurationDigest;
+
         public ComparableCheck.Check check;
         public List<Delivery> deliveries = new ArrayList<>();
     }

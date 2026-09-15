@@ -15,7 +15,8 @@ public final class ResponderMapping extends AbstractDescribableImpl<ResponderMap
     private String workspaceName = "";
     private String displayName = "";
     private String verificationStatus = "NEEDS_VALIDATION";
-    private String intendedCredential = "";
+    // Jenkins credential ID only; never the credential's secret value.
+    private String intendedCredentialId = "";
     private String intendedFingerprint = "";
 
     @DataBoundConstructor
@@ -51,8 +52,8 @@ public final class ResponderMapping extends AbstractDescribableImpl<ResponderMap
         return verificationStatus == null ? "NEEDS_VALIDATION" : verificationStatus;
     }
 
-    String intendedCredential() {
-        return intendedCredential == null ? "" : intendedCredential;
+    String intendedCredentialId() {
+        return intendedCredentialId == null ? "" : intendedCredentialId;
     }
 
     String intendedFingerprint() {
@@ -72,7 +73,7 @@ public final class ResponderMapping extends AbstractDescribableImpl<ResponderMap
         value.workspaceName = bounded(workspaceName, 80);
         value.displayName = bounded(name, 160);
         value.verificationStatus = status;
-        value.intendedCredential = bounded(credential, 256);
+        value.intendedCredentialId = bounded(credential, 256);
         value.intendedFingerprint = bounded(fingerprint, 128);
         return value;
     }
@@ -84,7 +85,7 @@ public final class ResponderMapping extends AbstractDescribableImpl<ResponderMap
                 workspaceName,
                 name,
                 "VERIFIED",
-                original.intendedCredential(),
+                original.intendedCredentialId(),
                 original.intendedFingerprint());
     }
 
@@ -127,7 +128,7 @@ public final class ResponderMapping extends AbstractDescribableImpl<ResponderMap
                 && getWorkspaceName().equals(mapping.getWorkspaceName())
                 && getDisplayName().equals(mapping.getDisplayName())
                 && getVerificationStatus().equals(mapping.getVerificationStatus())
-                && intendedCredential().equals(mapping.intendedCredential())
+                && intendedCredentialId().equals(mapping.intendedCredentialId())
                 && intendedFingerprint().equals(mapping.intendedFingerprint());
     }
 
@@ -140,7 +141,7 @@ public final class ResponderMapping extends AbstractDescribableImpl<ResponderMap
                 getWorkspaceName(),
                 getDisplayName(),
                 getVerificationStatus(),
-                intendedCredential(),
+                intendedCredentialId(),
                 intendedFingerprint());
     }
 

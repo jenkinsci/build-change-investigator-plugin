@@ -101,7 +101,7 @@ public final class EpisodeStore {
                 || state.history.size() > 8) throw new IOException("Unsupported Slack episode state");
         if (state.optInAfter < -1
                 || state.nextPreflight < 0
-                || !bounded(state.configKey, 128)
+                || !bounded(state.configurationDigest, 128)
                 || !bounded(state.safeStatus, 200)) throw new IOException("Invalid Slack settings fence");
         Set<String> ids = new HashSet<>();
         for (EpisodeEngine.Episode episode : state.history) validate(episode, ids);
@@ -131,7 +131,7 @@ public final class EpisodeStore {
                 || !bounded(episode.channel, 100)
                 || !bounded(episode.routeTeam, 100)
                 || !bounded(episode.credentialId, 256)
-                || !bounded(episode.configKey, 128)
+                || !bounded(episode.configurationDigest, 128)
                 || episode.firstBuild < 1
                 || episode.lastFailure < episode.firstBuild
                 || episode.rootTs != null && !episode.rootTs.matches("[0-9]{1,20}\\.[0-9]{1,20}"))

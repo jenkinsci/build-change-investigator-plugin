@@ -208,11 +208,11 @@ public class SlackTransportTest {
         ConnectionResult verified = selectedTransport.checkConnection("selected-bot", "C12345678");
         assertTrue(verified.success());
         assertEquals("Demo Workspace", verified.workspaceName());
-        assertTrue(verified.credentialFingerprint().matches("[a-f0-9]{64}"));
-        assertEquals(selectedTransport.credentialFingerprint("selected-bot"), verified.credentialFingerprint());
+        assertTrue(verified.authenticationDigest().matches("[a-f0-9]{64}"));
+        assertEquals(selectedTransport.credentialFingerprint("selected-bot"), verified.authenticationDigest());
         assertFalse(verified.toString().contains(TOKEN));
         selected.set("xoxb-synthetic-rotated-credential");
-        assertNotEquals(selectedTransport.credentialFingerprint("selected-bot"), verified.credentialFingerprint());
+        assertNotEquals(selectedTransport.credentialFingerprint("selected-bot"), verified.authenticationDigest());
         assertEquals(2, methods.size(), "Local fingerprint checks must not contact Slack");
     }
 
@@ -224,7 +224,7 @@ public class SlackTransportTest {
         assertEquals("", user.credentialFingerprint("user"));
         ConnectionResult failure = missing.checkConnection("missing", "#alerts");
         assertFalse(failure.success());
-        assertEquals("", failure.credentialFingerprint());
+        assertEquals("", failure.authenticationDigest());
         assertTrue(methods.isEmpty());
     }
 
@@ -301,7 +301,7 @@ public class SlackTransportTest {
         assertEquals(MemberVerification.Status.VERIFIED, proof.status());
         assertEquals("U12345678", proof.userId());
         assertEquals("T12345678", proof.workspaceId());
-        assertEquals(transport.credentialFingerprint("bot"), proof.credentialFingerprint());
+        assertEquals(transport.credentialFingerprint("bot"), proof.authenticationDigest());
         assertEquals("Alex Morrison", proof.friendlyName());
         assertEquals(List.of("/api/auth.test", "/api/users.info"), methods);
         assertNull(posted);
@@ -327,7 +327,7 @@ public class SlackTransportTest {
             assertFalse(proof.verified());
             assertEquals(MemberVerification.Status.INVALID, proof.status());
             assertEquals("", proof.friendlyName());
-            assertEquals(transport.credentialFingerprint("bot"), proof.credentialFingerprint());
+            assertEquals(transport.credentialFingerprint("bot"), proof.authenticationDigest());
             assertEquals("T12345678", proof.workspaceId());
             assertEquals("U12345678", proof.userId());
         }
@@ -355,7 +355,7 @@ public class SlackTransportTest {
         userBody = "{\"ok\":false,\"error\":\"user_not_found\"}";
         MemberVerification missing = transport.verifyMember("bot", "U12345678");
         assertEquals(MemberVerification.Status.INVALID, missing.status());
-        assertEquals(transport.credentialFingerprint("bot"), missing.credentialFingerprint());
+        assertEquals(transport.credentialFingerprint("bot"), missing.authenticationDigest());
         assertFalse(missing.verified());
         for (String body : List.of(
                 "{\"ok\":true}",
@@ -366,7 +366,7 @@ public class SlackTransportTest {
             MemberVerification result = transport.verifyMember("bot", "U12345678");
             assertEquals(MemberVerification.Status.NEEDS_VALIDATION, result.status());
             assertFalse(result.verified());
-            assertEquals("", result.credentialFingerprint());
+            assertEquals("", result.authenticationDigest());
         }
         methods.clear();
         assertEquals(

@@ -30,7 +30,8 @@ public final class SlackConfiguration extends GlobalConfiguration {
     private long modifiedAtMillis = System.currentTimeMillis();
     private String credentialId = "";
     private String verifiedCredentialId = "";
-    private String verifiedCredentialFingerprint = "";
+    // SHA-256 of the selected bot token, used only to invalidate cached verification after rotation.
+    private String verifiedAuthenticationDigest = "";
     private String verifiedWorkspace = "";
     private String verifiedWorkspaceId = "";
     private long workspaceProofGeneration;
@@ -40,6 +41,10 @@ public final class SlackConfiguration extends GlobalConfiguration {
     public static final int MAX_RESPONDER_MAPPINGS = 1000;
 
     public SlackConfiguration() {
+        // Preserve the existing XML schema while making the non-secret Java fields explicit.
+        var xml = getConfigFile().getXStream();
+        xml.aliasField("intendedCredential", ResponderMapping.class, "intendedCredentialId");
+        xml.aliasField("verifiedCredentialFingerprint", SlackConfiguration.class, "verifiedAuthenticationDigest");
         load();
         if (getResponderMappings().stream().anyMatch(ResponderMapping::needsIdPersistence)) {
             save();
@@ -83,10 +88,10 @@ public final class SlackConfiguration extends GlobalConfiguration {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         if (verifiedCredentialId == null
                 || !verifiedCredentialId.equals(getCredentialId())
-                || verifiedCredentialFingerprint == null
-                || verifiedCredentialFingerprint.isBlank()) return "";
+                || verifiedAuthenticationDigest == null
+                || verifiedAuthenticationDigest.isBlank()) return "";
         String current = SlackTransport.get().credentialFingerprint(getCredentialId());
-        return verifiedCredentialFingerprint.equals(current) ? ResponderMapping.bounded(verifiedWorkspace, 80) : "";
+        return verifiedAuthenticationDigest.equals(current) ? ResponderMapping.bounded(verifiedWorkspace, 80) : "";
     }
 
     public synchronized String getVerifiedWorkspaceName() {
@@ -101,14 +106,14 @@ public final class SlackConfiguration extends GlobalConfiguration {
             String submittedCredentialId,
             io.jenkins.plugins.changeinvestigator.slack.transport.ConnectionResult result) {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
-        String fingerprint = result.credentialFingerprint();
+        String fingerprint = result.authenticationDigest();
         if (!result.success()
                 || fingerprint == null
                 || fingerprint.isBlank()
                 || !fingerprint.equals(SlackTransport.get().credentialFingerprint(submittedCredentialId))) return false;
         workspaceProofGeneration++;
         verifiedCredentialId = submittedCredentialId;
-        verifiedCredentialFingerprint = fingerprint;
+        verifiedAuthenticationDigest = fingerprint;
         verifiedWorkspace = ResponderMapping.bounded(result.workspaceName(), 80);
         verifiedWorkspaceId = result.route() == null ? "" : result.route().teamId();
         save();
@@ -165,7 +170,7 @@ public final class SlackConfiguration extends GlobalConfiguration {
                     value.getWorkspaceName(),
                     value.getDisplayName(),
                     "NEEDS_VALIDATION",
-                    value.intendedCredential(),
+                    value.intendedCredentialId(),
                     value.intendedFingerprint());
             selectedCredential = getCredentialId();
             selectedFingerprint = SlackTransport.get().credentialFingerprint(selectedCredential);
@@ -207,7 +212,7 @@ public final class SlackConfiguration extends GlobalConfiguration {
                     && original.getSlackUser().equals(result.userId())
                     && result.workspaceId() != null
                     && result.workspaceId().matches("T[A-Z0-9]{8,}")
-                    && selectedFingerprint.equals(result.credentialFingerprint());
+                    && selectedFingerprint.equals(result.authenticationDigest());
             var status = proof
                     ? result.status()
                     : io.jenkins.plugins.changeinvestigator.slack.transport.MemberVerification.Status.NEEDS_VALIDATION;
@@ -254,7 +259,7 @@ public final class SlackConfiguration extends GlobalConfiguration {
         if (workspace.isBlank()) return false;
         if (!mapping.getWorkspaceId().isBlank()) return workspace.equals(mapping.getWorkspaceId());
         return !fingerprint.isBlank()
-                && credential.equals(mapping.intendedCredential())
+                && credential.equals(mapping.intendedCredentialId())
                 && fingerprint.equals(mapping.intendedFingerprint());
     }
 
@@ -370,7 +375,7 @@ public final class SlackConfiguration extends GlobalConfiguration {
                     next.getIdentity(),
                     null,
                     next.getWorkspaceId(),
-                    next.intendedCredential(),
+                    next.intendedCredentialId(),
                     next.intendedFingerprint());
             var values = new java.util.ArrayList<>(getResponderMappings());
             values.add(next);
@@ -391,7 +396,7 @@ public final class SlackConfiguration extends GlobalConfiguration {
                     updated.getIdentity(),
                     id,
                     updated.getWorkspaceId(),
-                    updated.intendedCredential(),
+                    updated.intendedCredentialId(),
                     updated.intendedFingerprint());
             values.set(index, updated);
             setResponderMappings(values);
@@ -458,7 +463,7 @@ public final class SlackConfiguration extends GlobalConfiguration {
                         && identity.equalsIgnoreCase(value.getIdentity().trim())
                         && (workspace.isBlank()
                                 ? value.getWorkspaceId().isBlank()
-                                        && credential.equals(value.intendedCredential())
+                                        && credential.equals(value.intendedCredentialId())
                                         && fingerprint.equals(value.intendedFingerprint())
                                 : workspace.equals(value.getWorkspaceId()))))
             throw new IllegalArgumentException(
@@ -527,7 +532,7 @@ public final class SlackConfiguration extends GlobalConfiguration {
             workspaceProofGeneration++;
         if (Objects.equals(verifiedCredentialId, submitted)) {
             verifiedCredentialId = "";
-            verifiedCredentialFingerprint = "";
+            verifiedAuthenticationDigest = "";
             verifiedWorkspace = "";
             verifiedWorkspaceId = "";
             save();

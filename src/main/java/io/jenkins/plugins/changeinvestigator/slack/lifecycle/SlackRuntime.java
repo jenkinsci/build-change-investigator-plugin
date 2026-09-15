@@ -84,15 +84,15 @@ public final class SlackRuntime {
         if (property == null || !property.isEnabled() || !config.isConfigured()) {
             cancel(state);
             state.lastBuild = latest;
-            state.configKey = null;
+            state.configurationDigest = null;
             state.safeStatus = "";
             state.optInAfter = -1;
             store.save(state);
             return;
         }
         String key = key(job);
-        if (state.configKey == null
-                || !state.configKey.equals(key)
+        if (state.configurationDigest == null
+                || !state.configurationDigest.equals(key)
                 || state.optInAfter != property.getEnabledAfterBuild()) {
             cancel(state);
             state.active = null;
@@ -106,7 +106,7 @@ public final class SlackRuntime {
                 state.lastBuild = number;
             }
             state.optInAfter = property.getEnabledAfterBuild();
-            state.configKey = key;
+            state.configurationDigest = key;
             state.nextPreflight = 0;
             store.save(state);
         }
@@ -242,7 +242,7 @@ public final class SlackRuntime {
             state.active.deliveries.get(0).mappingRevision = mappingRevision;
             state.active.routeTeam = connection.route().teamId();
             state.active.credentialId = config.getCredentialId();
-            state.active.configKey = state.configKey;
+            state.active.configurationDigest = state.configurationDigest;
         }
         state.active.knownFirstBad = knownFirstBad;
     }
@@ -255,7 +255,7 @@ public final class SlackRuntime {
             SlackConfiguration config,
             String key)
             throws IOException {
-        if (!key.equals(episode.configKey)) return;
+        if (!key.equals(episode.configurationDigest)) return;
         for (var delivery : episode.deliveries) {
             if (delivery.status.equals("QUEUED")
                     && delivery.kind.equals("INITIAL")

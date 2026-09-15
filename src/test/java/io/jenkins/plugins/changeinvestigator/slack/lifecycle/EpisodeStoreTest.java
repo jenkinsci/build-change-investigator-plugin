@@ -10,6 +10,30 @@ import org.junit.jupiter.api.io.TempDir;
 
 class EpisodeStoreTest {
     @Test
+    void configurationDigestsKeepLegacyJsonNamesAndDeliveryState(@TempDir Path directory) throws Exception {
+        Path file = directory.resolve("state.json");
+        EpisodeStore store = new EpisodeStore(file);
+        EpisodeEngine.State state = new EpisodeEngine.State();
+        EpisodeEngine.failure(state, 1, "signature", "material", null, "C12345678", "{}", 0);
+        String digest = EpisodeEngine.digest("true|bot-id|#alerts|true|1|1|0|0");
+        state.configurationDigest = digest;
+        state.active.configurationDigest = digest;
+        var delivery = state.active.deliveries.get(0);
+        delivery.status = "UNKNOWN_OUTCOME";
+        delivery.aiRequested = true;
+        store.save(state);
+        String json = Files.readString(file);
+        assertTrue(json.contains("\"configKey\":\"" + digest + "\""));
+        assertFalse(json.contains("configurationDigest"));
+        EpisodeEngine.State restored = new EpisodeStore(file).read();
+        assertEquals(digest, restored.configurationDigest);
+        assertEquals(digest, restored.active.configurationDigest);
+        assertEquals(delivery.id, restored.active.deliveries.get(0).id);
+        assertEquals("UNKNOWN_OUTCOME", restored.active.deliveries.get(0).status);
+        assertTrue(restored.active.deliveries.get(0).aiRequested);
+    }
+
+    @Test
     void duplicateKeysTrailingObjectsAndUnknownVersionsFailClosed(@TempDir Path directory) throws Exception {
         Path file = directory.resolve("state.json");
         EpisodeStore store = new EpisodeStore(file);

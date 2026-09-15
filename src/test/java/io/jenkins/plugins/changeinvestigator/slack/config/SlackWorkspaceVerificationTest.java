@@ -116,6 +116,37 @@ class SlackWorkspaceVerificationTest {
         }
     }
 
+    @Test
+    void verificationMetadataKeepsLegacyXmlNamesWithoutStoringTheBotSecret(JenkinsRule j) throws Exception {
+        var config = SlackConfiguration.get();
+        config.setCredentialId("saved-bot");
+        assertEquals(FormValidation.Kind.OK, config.doTestConnection("saved-bot", "#alerts").kind);
+        String digest = SlackTransport.get().credentialFingerprint("saved-bot");
+        config.setResponderMappings(java.util.List.of(ResponderMapping.associated(
+                new ResponderMapping("Demo Engineer", "U12345678"),
+                "T12345678",
+                "Demo Workspace",
+                "demo",
+                "VERIFIED",
+                "saved-bot",
+                digest)));
+        var path = j.jenkins.getRootDir().toPath().resolve(SlackConfiguration.class.getName() + ".xml");
+        String xml = java.nio.file.Files.readString(path);
+        assertTrue(xml.contains("<intendedCredential>saved-bot</intendedCredential>"));
+        assertTrue(xml.contains("<verifiedCredentialFingerprint>" + digest + "</verifiedCredentialFingerprint>"));
+        assertFalse(xml.contains("<intendedCredentialId>"));
+        assertFalse(xml.contains("<verifiedAuthenticationDigest>"));
+        assertFalse(xml.contains(TOKENS.get("saved-bot")));
+        var restored = new SlackConfiguration();
+        assertEquals("Demo Workspace", restored.getVerifiedWorkspace());
+        var mapping = restored.getResponderMappings().get(0);
+        assertEquals("saved-bot", mapping.intendedCredentialId());
+        assertEquals(digest, mapping.intendedFingerprint());
+        assertEquals("VERIFIED", mapping.getVerificationStatus());
+        TOKENS.put("saved-bot", "xoxb-synthetic-rotated-token");
+        assertEquals("", restored.getVerifiedWorkspace());
+    }
+
     @TestExtension
     public static final class WorkspaceTransport extends SlackTransport {
         public WorkspaceTransport() {
