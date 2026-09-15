@@ -30,9 +30,15 @@ Before enabling AI analysis, understand what leaves your Jenkins controller:
   Change Investigator** - one of the native providers (OpenAI, Anthropic Claude, AWS Bedrock,
   Azure OpenAI, Google Gemini, Ollama) or a Generic OpenAI-compatible endpoint; see
   [Supported AI providers](README.md#supported-ai-providers) for exactly what each one sends
-  and how. Nothing is sent anywhere until an administrator both enables AI analysis *and* a
-  user with the `RunChangeInvestigationAnalysis` permission clicks "Run AI Analysis" on a
-  specific build.
+  and how. An administrator must enable and configure AI analysis. Analysis then runs when
+  a user with the `RunChangeInvestigationAnalysis` permission clicks "Run AI Analysis", or
+  automatically for a failing job explicitly opted into BCI Slack notifications. The Slack
+  path reuses matching results or in-flight work and waits at most 30 seconds before sending
+  deterministic-only evidence. Ordinary page loads never trigger analysis.
+- **Slack notifications (separate per-job opt-in):** bounded investigation evidence and any
+  included AI interpretation are sent to the configured Slack channel. Global Slack setup
+  alone does not subscribe jobs. Review channel access before opting in a job; notification
+  recipients may have different access from users of the Jenkins investigation page.
 
 ### What is deliberately never sent
 

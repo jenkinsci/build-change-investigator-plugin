@@ -1,0 +1,14 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+  <f:section title="Build Change Investigator Notifications">
+    <f:optionalBlock name="enabled" field="enabled" title="Send BCI Slack notifications for this job" inline="true">
+      <j:choose>
+        <j:when test="${descriptor.slackConfigured}"><f:entry title="Channel"><div>Using global channel: ${descriptor.globalChannel}</div></f:entry></j:when>
+        <j:otherwise><f:block><div class="jenkins-!-color-secondary">Slack is not configured yet. Ask a Jenkins administrator to configure Slack under Manage Jenkins → System → Build Change Investigator.</div></f:block></j:otherwise>
+      </j:choose>
+      <f:optionalBlock name="useChannelOverride" field="useChannelOverride" title="Use a different channel for this job" inline="true">
+        <f:entry title="Channel" field="channel"><f:textbox placeholder="#payments-alerts" checkMethod="post"/></f:entry>
+      </f:optionalBlock>
+    </f:optionalBlock>
+  </f:section>
+</j:jelly>

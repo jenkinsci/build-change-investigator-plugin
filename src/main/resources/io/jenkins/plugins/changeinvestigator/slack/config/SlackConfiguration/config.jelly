@@ -1,0 +1,24 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:c="/lib/credentials" xmlns:st="jelly:stapler">
+  <st:adjunct includes="io.jenkins.plugins.changeinvestigator.slack.config.SlackConfiguration.workspace"/>
+  <f:section title="Build Change Investigator — Slack">
+    <f:optionalBlock name="enabled" field="enabled" title="Enable Slack integration" inline="true">
+      <f:entry title="Bot credential" field="credentialId"><c:select/></f:entry>
+      <f:entry title="Workspace">
+        <div id="bci-slack-workspace" data-credential="${instance.credentialId}">
+          <span class="bci-slack-workspace-name"><j:choose><j:when test="${instance.workspaceVerified}">${instance.verifiedWorkspace}</j:when><j:otherwise>Not verified yet</j:otherwise></j:choose></span>
+          <div class="jenkins-form-description bci-slack-workspace-description"><j:if test="${instance.workspaceVerified}">Detected automatically</j:if></div>
+        </div>
+      </f:entry>
+      <f:entry title="Default channel" field="defaultChannel"><f:textbox placeholder="#jenkins-alerts" checkMethod="post"/></f:entry>
+      <f:entry><f:validateButton title="Test Connection" progress="Connecting..." method="testConnection" with="credentialId,defaultChannel"/></f:entry>
+      <f:advanced>
+        <f:entry title="Tag mapped responders" field="tagResponders"><f:checkbox/></f:entry>
+        <f:entry title="Responder mappings">
+          <div>${instance.responderMappings.size()} ${instance.responderMappings.size() == 1 ? 'mapping' : 'mappings'} configured.</div>
+          <div><a href="${rootURL}/manage/bci-slack-responders/">Manage mappings</a></div>
+        </f:entry>
+      </f:advanced>
+    </f:optionalBlock>
+  </f:section>
+</j:jelly>

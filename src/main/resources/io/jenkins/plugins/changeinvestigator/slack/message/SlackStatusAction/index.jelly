@@ -1,0 +1,10 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:l="/lib/layout" xmlns:st="jelly:stapler">
+  <l:layout title="Slack notifications">
+    <l:side-panel><st:include page="sidepanel.jelly" it="${it.job}"/></l:side-panel>
+    <l:main-panel>
+      <h1>Slack notifications</h1>
+      <p>${it.status}</p>
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

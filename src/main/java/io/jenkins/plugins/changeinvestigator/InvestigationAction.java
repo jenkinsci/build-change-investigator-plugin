@@ -19,7 +19,7 @@ import org.kohsuke.stapler.verb.POST;
  *
  * <p>Deterministic {@link #evidence} is collected once, at build completion, and never
  * requires an AI call. {@link #aiAssessment} starts {@code null} ("not yet run") and is only
- * populated when a permitted user explicitly triggers {@link #doRunAi(StaplerResponse2)}, so simply viewing
+ * populated by an explicit manual request or an opted-in Slack investigation. Simply viewing
  * a build page never causes an outbound AI request. The result is cached on the action (and
  * persisted with the build) so revisiting the page does not re-trigger analysis.
  */
@@ -46,6 +46,7 @@ public class InvestigationAction implements RunAction2, org.kohsuke.stapler.Stap
     private final BuildInvestigationEvidence evidence;
     private volatile AiAssessment aiAssessment;
     private String aiScope;
+    private java.util.Set<String> attemptedAiScopes;
     private io.jenkins.plugins.changeinvestigator.investigation.InvestigationCase investigation;
     private transient java.util.Map<String, io.jenkins.plugins.changeinvestigator.investigation.InvestigationCase>
             comparisons;
@@ -237,6 +238,18 @@ public class InvestigationAction implements RunAction2, org.kohsuke.stapler.Stap
         return aiAssessment;
     }
 
+    /** Whether an explicitly requested analysis is running; observing this never starts a request. */
+    public synchronized boolean isAiAnalysisRunning() {
+        return run != null
+                && io.jenkins.plugins.changeinvestigator.ai.AiAnalysisExecutor.get()
+                                .find(analysisKey(automaticAiEvidence().getAiScope()))
+                        != null;
+    }
+
+    private String analysisKey(String scope) {
+        return run.getExternalizableId() + "|" + run.getTimeInMillis() + "|" + scope;
+    }
+
     public boolean hasAiAssessment() {
         return aiAssessment != null;
     }
@@ -249,46 +262,149 @@ public class InvestigationAction implements RunAction2, org.kohsuke.stapler.Stap
         return run != null && run.getParent().hasPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS);
     }
 
-    /**
-     * Runs (or re-runs) the AI assessment for this investigation and persists the result on
-     * the build. Idempotent to call repeatedly - each call performs exactly one AI request,
-     * so re-runs are always an explicit, visible user action rather than something that can
-     * happen accidentally.
-     */
+    /** Starts or joins one analysis for an opted-in Slack investigation; never called by page rendering. */
+    public boolean startSlackAiAnalysis() {
+        if (run == null) return false;
+        run.getParent().checkPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS);
+        if (!io.jenkins.plugins.changeinvestigator.slack.config.SlackJobProperty.eligible(run)
+                || !io.jenkins.plugins.changeinvestigator.slack.config.SlackConfiguration.get()
+                        .isConfigured()) return false;
+        requestAnalysis(true);
+        return isAiAnalysisRunning();
+    }
+
+    private synchronized java.util.concurrent.CompletableFuture<AiAssessment> requestAnalysis(boolean automatic) {
+        var config = ChangeInvestigatorGlobalConfiguration.get();
+        if (!config.isAiEnabled() || config.getProviderConfig() == null) {
+            AiAssessment result = !config.isAiEnabled()
+                    ? AiAssessment.disabled()
+                    : AiAssessment.failed(
+                            "AI analysis is enabled but no AI provider is configured. Go to Manage Jenkins -> System "
+                                    + "-> Build Change Investigator and select a provider.");
+            if (!automatic) publishAnalysis(result, null);
+            return java.util.concurrent.CompletableFuture.completedFuture(result);
+        }
+        BuildInvestigationEvidence input = automaticAiEvidence();
+        String scope = input.getAiScope();
+        var executor = io.jenkins.plugins.changeinvestigator.ai.AiAnalysisExecutor.get();
+        String key = analysisKey(scope);
+        var existing = executor.find(key);
+        if (existing != null) return existing;
+        if (automatic
+                && aiAssessment != null
+                && aiAssessment.isCompleted()
+                && scope.equals(getAiPresentation().getScope()))
+            return java.util.concurrent.CompletableFuture.completedFuture(aiAssessment);
+        if (attemptedAiScopes == null) attemptedAiScopes = new java.util.HashSet<>();
+        if (automatic && (attemptedAiScopes.contains(scope) || attemptedAiScopes.size() >= 16))
+            return java.util.concurrent.CompletableFuture.completedFuture(aiAssessment);
+        attemptedAiScopes.add(scope);
+        // Record the attempt before outbound work. A restart must not silently repeat a model request.
+        try {
+            run.save();
+        } catch (IOException | RuntimeException failure) {
+            AiAssessment failed =
+                    AiAssessment.failed("AI analysis could not be started safely. Try a manual analysis later.");
+            if (!automatic) publishAnalysis(failed, scope);
+            return java.util.concurrent.CompletableFuture.completedFuture(failed);
+        }
+        var reservation = executor.reserve(key);
+        if (reservation == null) {
+            AiAssessment failed = AiAssessment.failed("AI analysis is busy. Try a manual analysis later.");
+            if (!executor.isStopping()) publishAnalysis(failed, scope);
+            return java.util.concurrent.CompletableFuture.completedFuture(failed);
+        }
+        var future = reservation.future();
+        if (!reservation.owner()) return future;
+        var provider = config.getProviderConfig();
+        int timeout = config.getTimeoutSeconds();
+        double temperature = config.getTemperature();
+        long slackRevision = io.jenkins.plugins.changeinvestigator.slack.config.SlackConfiguration.get()
+                .getRevision();
+        var slackProperty =
+                run.getParent().getProperty(io.jenkins.plugins.changeinvestigator.slack.config.SlackJobProperty.class);
+        long jobRevision = slackProperty == null ? -1 : slackProperty.getRevision();
+        boolean submitted = executor.submit(() -> {
+            AiAssessment result;
+            try (var ignored = hudson.security.ACL.as2(hudson.security.ACL.SYSTEM2)) {
+                if (automatic
+                        && (!io.jenkins.plugins.changeinvestigator.slack.config.SlackJobProperty.eligible(run)
+                                || !io.jenkins.plugins.changeinvestigator.slack.config.SlackConfiguration.get()
+                                        .isConfigured()
+                                || !ChangeInvestigatorGlobalConfiguration.get().isAiEnabled()
+                                || ChangeInvestigatorGlobalConfiguration.get().getProviderConfig() != provider
+                                || io.jenkins.plugins.changeinvestigator.slack.config.SlackConfiguration.get()
+                                                .getRevision()
+                                        != slackRevision
+                                || run.getParent()
+                                                .getProperty(
+                                                        io.jenkins.plugins.changeinvestigator.slack.config
+                                                                .SlackJobProperty.class)
+                                        != slackProperty
+                                || slackProperty.getRevision() != jobRevision)) {
+                    result = AiAssessment.failed(
+                            "Automatic analysis was cancelled because notification settings changed.");
+                } else
+                    result = new AiAnalysisService(new ObjectMapper()).analyze(input, provider, timeout, temperature);
+            } catch (RuntimeException | LinkageError failure) {
+                result = AiAssessment.failed("AI analysis is unavailable. Observed evidence remains available.");
+            }
+            try {
+                if (!executor.isStopping()) publishCurrentAnalysis(result, scope);
+            } finally {
+                executor.complete(key, future, result);
+            }
+        });
+        if (!submitted) {
+            AiAssessment result = AiAssessment.failed("AI analysis is busy. Try a manual analysis later.");
+            if (!executor.isStopping()) publishAnalysis(result, scope);
+            executor.complete(key, future, result);
+        }
+        return future;
+    }
+
+    private void publishAnalysis(AiAssessment result, String scope) {
+        aiScope = scope;
+        aiAssessment = result;
+        try {
+            run.save();
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "Failed to persist AI assessment; assessment remains available in memory.");
+        }
+    }
+
+    private void publishCurrentAnalysis(AiAssessment result, String scope) {
+        try (var ignored = hudson.security.ACL.as2(hudson.security.ACL.SYSTEM2)) {
+            var currentJob = jenkins.model.Jenkins.get()
+                    .getItemByFullName(run.getParent().getFullName(), hudson.model.Job.class);
+            var currentRun = currentJob == null ? null : currentJob.getBuildByNumber(run.getNumber());
+            if (currentRun == null || currentRun.getTimeInMillis() != run.getTimeInMillis()) return;
+            var current = currentRun.getAction(InvestigationAction.class);
+            if (current == null) return;
+            synchronized (current) {
+                if (scope.equals(current.automaticAiEvidence().getAiScope())) current.publishAnalysis(result, scope);
+            }
+        } catch (RuntimeException | LinkageError unavailable) {
+            LOGGER.warning(
+                    "AI assessment could not be attached to the current build; observed evidence remains available.");
+        }
+    }
+
+    /** Explicit manual analysis may rerun a completed assessment, but joins existing work for the same scope. */
     @POST
     public void doRunAi(StaplerResponse2 rsp) throws IOException {
-        if (run == null) {
-            throw new IllegalStateException("Action is not attached to a build.");
-        }
+        if (run == null) throw new IllegalStateException("Action is not attached to a build.");
         run.getParent().checkPermission(ChangeInvestigatorPermissions.RUN_AI_ANALYSIS);
-
-        ChangeInvestigatorGlobalConfiguration config = ChangeInvestigatorGlobalConfiguration.get();
-        AiAssessment result;
-        String submittedScope = null;
-        if (!config.isAiEnabled()) {
-            result = AiAssessment.disabled();
-        } else if (config.getProviderConfig() == null) {
-            result = AiAssessment.failed(
-                    "AI analysis is enabled but no AI provider is configured. Go to Manage Jenkins -> System "
-                            + "-> Build Change Investigator and select a provider.");
-        } else {
-            BuildInvestigationEvidence input = automaticAiEvidence();
-            submittedScope = input.getAiScope();
-            AiAnalysisService service = new AiAnalysisService(new ObjectMapper());
-            result = service.analyze(
-                    input, config.getProviderConfig(), config.getTimeoutSeconds(), config.getTemperature());
+        var future = requestAnalysis(false);
+        try {
+            future.get(
+                    ChangeInvestigatorGlobalConfiguration.get().getTimeoutSeconds() + 10L,
+                    java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException failure) {
+            // Background work remains bounded; the page continues to show observed evidence.
         }
-
-        synchronized (this) {
-            this.aiScope = submittedScope;
-            this.aiAssessment = result;
-            try {
-                run.save();
-            } catch (IOException | RuntimeException e) {
-                LOGGER.log(Level.WARNING, "Failed to persist AI assessment; assessment remains available in memory.");
-            }
-        }
-
         rsp.sendRedirect2(".");
     }
 }

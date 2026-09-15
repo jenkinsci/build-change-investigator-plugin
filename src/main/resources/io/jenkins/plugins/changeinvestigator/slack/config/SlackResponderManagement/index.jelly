@@ -1,0 +1,90 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:l="/lib/layout" xmlns:f="/lib/form" xmlns:st="jelly:stapler">
+  <j:set var="view" value="${it.view}"/>
+  <l:layout title="BCI Slack responder mappings" permission="${it.requiredPermission}">
+    <st:adjunct includes="io.jenkins.plugins.changeinvestigator.slack.config.SlackResponderManagement.management"/>
+    <l:side-panel>
+      <l:tasks>
+        <l:task href="${rootURL}/manage/" icon="symbol-settings" title="Manage Jenkins"/>
+        <l:task href="${rootURL}/configure" icon="symbol-settings" title="System configuration"/>
+      </l:tasks>
+    </l:side-panel>
+    <l:main-panel>
+      <h1>Slack responder mappings</h1>
+      <div class="jenkins-buttons-row"><a id="mapping-add" class="jenkins-button jenkins-button--primary" href="#mapping-editor">New mapping</a></div>
+      <p><strong>Workspace:</strong> ${it.workspace}</p>
+      <p>Mappings below apply only to this workspace.</p>
+      <p>Map an exact SCM identity to a Slack Member ID. These mappings are used only when responder tagging is enabled.</p>
+      <p>In Slack, open the member's profile, choose More, then Copy member ID. No Slack directory is searched.</p>
+      <j:if test="${view.error != null &amp;&amp; empty(it.mappingErrorField)}"><div class="jenkins-alert jenkins-alert-danger" role="alert">${view.error}</div></j:if>
+      <j:if test="${it.validationNotice != null}"><div class="jenkins-alert jenkins-alert-info" role="status">${it.validationNotice}</div></j:if>
+      <j:if test="${it.hasDifferentWorkspaceMappings()}"><div class="jenkins-alert jenkins-alert-warning" role="status">Some mappings were saved for a different Slack workspace. Validate them for the current workspace.</div></j:if>
+      <form method="get" action=".">
+        <f:entry title="Search mappings">
+          <input class="jenkins-input" type="search" name="q" value="${view.query}" maxlength="256" aria-label="Search identity, Slack name, or Member ID"/>
+        </f:entry>
+        <button class="jenkins-button" type="submit">Search</button>
+        <a class="jenkins-button" href=".">Clear</a>
+      </form>
+      <p>${view.matching} matching ${view.matching == 1 ? 'mapping' : 'mappings'} · ${view.total} total</p>
+      <table class="jenkins-table" id="responder-mappings">
+        <thead><tr><th>Git / Jenkins identity</th><th>Slack user</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          <j:forEach var="mapping" items="${view.rows}">
+            <j:set var="status" value="${it.getMappingStatus(mapping)}"/>
+            <tr>
+              <td style="overflow-wrap:anywhere">${mapping.identity}</td>
+              <td style="overflow-wrap:anywhere">
+                <j:if test="${!empty(mapping.displayName)}"><div>${mapping.displayName.startsWith('@') ? mapping.displayName : '@' + mapping.displayName}</div></j:if>
+                <div>${mapping.slackUser}</div>
+              </td>
+              <td>${status eq 'Verified' ? '✓ Verified' : status}</td>
+              <td>
+                <div class="jenkins-buttons-row" style="flex-wrap:wrap">
+                <a class="jenkins-button" href="?id=${mapping.id}#mapping-editor">Edit</a>
+                <j:if test="${status ne 'Verified'}">
+                <f:form method="post" action="validate" name="validate-${mapping.id}">
+                  <input type="hidden" name="id" value="${mapping.id}"/>
+                  <button class="jenkins-button" type="submit">${status eq 'Workspace mismatch' ? 'Revalidate' : 'Validate'}</button>
+                </f:form>
+                </j:if>
+                <f:form method="post" action="remove" name="remove-${mapping.id}">
+                  <input type="hidden" name="id" value="${mapping.id}"/>
+                  <button class="jenkins-button jenkins-button--destructive" type="submit">Remove</button>
+                </f:form>
+                </div>
+              </td>
+            </tr>
+          </j:forEach>
+        </tbody>
+      </table>
+      <j:choose>
+        <j:when test="${view.total == 0}"><p>No responder mappings configured yet.</p></j:when>
+        <j:when test="${view.matching == 0}"><p>No mappings match this search.</p></j:when>
+      </j:choose>
+      <j:if test="${view.pages > 1}">
+      <nav aria-label="Mapping pages">
+        <j:if test="${view.page > 1}"><a class="jenkins-button" href="${view.previousUrl}">Previous</a></j:if>
+        <span>Page ${view.page} of ${view.pages}</span>
+        <j:if test="${view.page lt view.pages}"><a class="jenkins-button" href="${view.nextUrl}">Next</a></j:if>
+      </nav>
+      </j:if>
+      <h2 id="mapping-editor">${empty(view.id) ? 'Add mapping' : 'Edit mapping'}</h2>
+      <f:form method="post" action="save" name="mapping">
+        <input type="hidden" name="id" value="${view.id}"/>
+        <f:entry title="Git / Jenkins identity">
+          <input id="mapping-identity" class="jenkins-input" name="identity" value="${view.identity}" maxlength="256" required="required"/>
+          <j:if test="${it.mappingErrorField eq 'identity'}"><div id="mapping-identity-error" class="error" role="alert" data-mapping-error="true">${view.error}</div></j:if>
+          <p class="jenkins-description">Use the exact author identity recorded in the build's SCM changes. Identity matching ignores surrounding whitespace and letter case.</p>
+        </f:entry>
+        <f:entry title="Slack user">
+          <input id="mapping-member" class="jenkins-input" name="slackUser" value="${view.slackUser}" maxlength="64" required="required" placeholder="U12345678"/>
+          <j:if test="${it.mappingErrorField eq 'slackUser'}"><div id="mapping-member-error" class="error" role="alert" data-mapping-error="true">${view.error}</div></j:if>
+          <p class="jenkins-description">Slack member ID, for example U12345678. Copy it from the person's Slack profile. Do not enter a display name or email address.</p>
+        </f:entry>
+        <f:submit value="${empty(view.id) ? 'Save mapping' : 'Save changes'}"/>
+        <j:if test="${!empty(view.id)}"><a class="jenkins-button" href=".">Cancel</a></j:if>
+      </f:form>
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

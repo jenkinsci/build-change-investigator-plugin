@@ -88,6 +88,14 @@ If AI is configured, an authorized user can click **Run AI Analysis**. Page load
 
 AI is optional; regression investigation works without it. Supported providers are OpenAI, Anthropic Claude, AWS Bedrock, Azure OpenAI, Google Gemini, Ollama, and OpenAI-compatible endpoints. Configure a provider under **Manage Jenkins → System → Build Change Investigator**. API keys use Jenkins Credentials; Bedrock also supports the AWS default credential chain.
 
+## Optional Slack notifications
+
+Under **Manage Jenkins → System → Build Change Investigator — Slack**, enable Slack integration, select a bot **Secret text** credential, enter a default channel, and use **Test Connection**. Then opt in each job under **Build Change Investigator Notifications**. Jobs default to off; global setup does not enable them or backfill old builds. A job may override the channel while using the administrator's bot credential.
+
+The first investigation posts a compact evidence-first message. Unchanged failures stay quiet; material evidence updates and verified recovery reply in the same thread. A successful build alone does not prove recovery. Optional responder mappings and first-message tagging are under **Advanced**. When AI is enabled and configured, a Slack-enabled job can request one analysis for the same investigation evidence, reusing an existing result or in-flight request. The initial notification waits up to 30 seconds, then falls back to deterministic evidence; late AI completion never creates another reply.
+
+See [Slack setup and behavior](docs/SLACK.md) for bot scopes, recovery coverage, and delivery limitations.
+
 ## Requirements
 
 - Jenkins **2.541.3** or newer.
@@ -96,7 +104,7 @@ AI is optional; regression investigation works without it. Supported providers a
 
 ## Security
 
-Deterministic investigation runs locally in Jenkins. AI is explicitly triggered, credentials use Jenkins Credentials, and submitted evidence is bounded with best-effort secret redaction. See the [security policy](SECURITY.md).
+Deterministic investigation runs locally in Jenkins. AI runs on an explicit request or for a Slack-enabled job when global AI is configured and enabled. Credentials use Jenkins Credentials, and submitted evidence is bounded with best-effort secret redaction. See the [security policy](SECURITY.md).
 
 ## Links
 
