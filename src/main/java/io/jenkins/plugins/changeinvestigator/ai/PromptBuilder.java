@@ -28,7 +28,14 @@ public final class PromptBuilder {
                the regression, and explain why, citing the exact evidence entries that support \
                your reasoning (e.g. a specific commit message, changed file, or log line).
             3. Report a confidence level of exactly "LOW", "MEDIUM", or "HIGH".
-            4. Recommend concrete, practical verification steps an engineer could take next.
+            4. Recommend concrete, practical verification steps an engineer could take next. \
+               Start recommendedChecks with one short, conditional remediation when the evidence supports it, \
+               followed by how to verify it. Do not invent a replacement symbol, API, version, or fix. \
+               If no specific remediation is supported, recommend manual review instead. \
+               Keep mostLikelyCause a short, tentative explanation of the likely issue, not a repeat of \
+               commit IDs, authors, paths, or log output. Use file names rather than full paths. \
+               Interpretation is not a confirmed cause or fix; never override deterministic ranking, \
+               evidence strength, build boundaries, recovery state, or the deterministic first check.
             5. If the evidence is too sparse to identify a likely cause (e.g. no changes were \
                recorded, or the log excerpt does not indicate a clear failure point), set \
                "insufficientEvidence" to true and say so plainly instead of guessing.

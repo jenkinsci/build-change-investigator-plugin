@@ -146,6 +146,7 @@ class SlackSnapshotTest {
             SlackSnapshot published = SlackSnapshot.capture(build, 0);
             assertFalse(published.aiPending);
             assertTrue(published.ai.contains("Inspect the synthetic dependency change"));
+            assertEquals(SlackMessageText.NO_RESOLUTION, published.aiResolution);
             reloadBuild(build);
             assertFalse(build.getAction(InvestigationAction.class).isAiAnalysisRunning());
             assertTrue(
