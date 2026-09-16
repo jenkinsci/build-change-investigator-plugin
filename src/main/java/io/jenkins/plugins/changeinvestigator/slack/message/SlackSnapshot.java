@@ -41,6 +41,7 @@ public final class SlackSnapshot {
             strength = "",
             changes = "",
             ai = "",
+            aiResolution = "",
             aiScope = "",
             investigationUrl = "",
             buildUrl = "",
@@ -92,7 +93,10 @@ public final class SlackSnapshot {
     }
 
     public void includeAi(SlackSnapshot current) {
-        if (current != null && aiScope != null && aiScope.equals(current.aiScope)) ai = current.ai;
+        if (current != null && aiScope != null && aiScope.equals(current.aiScope)) {
+            ai = current.ai;
+            aiResolution = current.aiResolution;
+        }
     }
 
     public static SlackSnapshot capture(Run<?, ?> run, int episodeBaseline) throws IOException {
@@ -184,8 +188,12 @@ public final class SlackSnapshot {
                             .getAiScope()
                     : action.getEvidence().getAiScope();
             boolean sameCorpus = evidence == action.getEvidence();
-            if (sameCorpus && scope.equals(presentation.getScope()) && ai != null && ai.isCompleted())
-                s.ai = SlackMessageText.ai(ai.getMostLikelyCause(), ai.getRecommendedChecks(), s.check);
+            if (sameCorpus && scope.equals(presentation.getScope()) && ai != null && ai.isCompleted()) {
+                s.ai = SlackMessageText.compactAi(ai.getMostLikelyCause(), s.check);
+                if (s.ai.isBlank()) s.ai = "The available evidence does not establish a likely issue.";
+                s.aiResolution = SlackMessageText.resolution(
+                        ai.getMostLikelyCause(), ai.getRecommendedChecks(), s.check, ai.isInsufficientEvidence());
+            }
             s.aiPending = sameCorpus && s.ai.isEmpty() && action.isAiAnalysisRunning();
         }
         return s;

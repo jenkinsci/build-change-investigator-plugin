@@ -62,7 +62,8 @@ public final class SlackMessageRenderer {
             section(
                     blocks,
                     "Most relevant change",
-                    abbreviated(s.commit) + " · " + s.author + "\n" + s.source
+                    s.commit.substring(0, Math.min(8, s.commit.length())) + " · " + s.author + "\n"
+                            + SlackMessageText.source(s.source)
                             + (SlackMessageText.strength(s.strength).isBlank()
                                     ? ""
                                     : "\nEvidence strength: " + SlackMessageText.strength(s.strength)));
@@ -83,7 +84,12 @@ public final class SlackMessageRenderer {
         String interpretation = SlackMessageText.compactAi(s.ai, s.check);
         if (!interpretation.isBlank()) {
             blocks.add(Map.of("type", "divider"));
-            section(blocks, "AI Analysis", interpretation);
+            String resolution = SlackMessageText.compactAi(s.aiResolution, s.check);
+            if (resolution.isBlank()) resolution = SlackMessageText.NO_RESOLUTION;
+            section(
+                    blocks,
+                    "AI Analysis",
+                    "Likely issue:\n" + interpretation + "\n\nSuggested resolution:\n" + resolution);
             context(blocks, "Interpretation only, not a confirmed cause.");
         }
         actions(blocks, s.investigationUrl, s.buildUrl, s.changesUrl);

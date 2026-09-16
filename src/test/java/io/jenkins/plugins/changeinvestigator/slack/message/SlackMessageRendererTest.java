@@ -86,7 +86,7 @@ class SlackMessageRendererTest {
         assertTrue(rendered.contains("#223 current"));
         assertTrue(rendered.contains("CollateralTrade.java:853"));
         assertTrue(rendered.contains("isPortolioIM"));
-        assertTrue(rendered.contains("a254c24e1234"));
+        assertTrue(rendered.contains("a254c24e"));
         assertTrue(rendered.contains("Inspect the diff around line 853"));
         assertTrue(rendered.contains("Limitation"));
     }
@@ -225,27 +225,119 @@ class SlackMessageRendererTest {
     }
 
     @Test
-    void aiDoesNotRepeatTheDeterministicRecommendationOrDisclaimer() throws Exception {
+    void aiAddsResolutionWithoutRepeatingTheDeterministicCheck() throws Exception {
         SlackSnapshot s = sample();
-        s.ai = SlackMessageText.ai(
-                "The variable may be misspelled.",
-                List.of(s.check, "Check the declaration and spelling of isPortolioIM."),
-                s.check);
-        String rendered = SlackMessageRenderer.initial(s, "U12345678");
+        s.ai = "The variable may be misspelled.";
+        s.aiResolution = SlackMessageText.resolution(
+                s.ai,
+                List.of(
+                        s.check,
+                        "Check whether the declaration was renamed; correct the reference and rerun compilation."),
+                s.check,
+                false);
+        String rendered = SlackMessageRenderer.initial(s, null);
         assertEquals(1, rendered.split(java.util.regex.Pattern.quote(s.check), -1).length - 1);
         assertEquals(1, rendered.split("Interpretation only, not a confirmed cause.", -1).length - 1);
-        assertTrue(rendered.contains("Check the declaration and spelling"));
-        assertFalse(rendered.contains("Mapped from"));
-        assertFalse(rendered.contains("Initial investigation"));
+        assertTrue(rendered.contains("Likely issue:"));
+        assertTrue(rendered.contains("Suggested resolution:"));
+        assertTrue(rendered.contains("correct the reference and rerun compilation"));
+        assertTrue(rendered.indexOf("Check first") < rendered.indexOf("AI Analysis"));
+        assertTrue(rendered.contains("Evidence strength: Strong"));
+        assertFalse(rendered.contains("<@"));
+        assertEquals(s.aiResolution, SlackSnapshot.fromJson(s.toJson()).aiResolution);
         assertTrue(SlackMessageText.compactAi(s.check, s.check).isBlank());
-        assertEquals(
-                "Check the declaration.", SlackMessageText.ai(s.check, List.of("Check the declaration."), s.check));
-        assertEquals(
-                "The variable may be misspelled.",
-                SlackMessageText.ai(
-                        "The variable may be misspelled.",
-                        List.of("Inspect the diff near line 853."),
-                        "Inspect diff near line 853"));
+    }
+
+    @Test
+    void insufficientEvidenceOrMissingRemediationUsesSafeFallback() throws Exception {
+        SlackSnapshot s = sample();
+        s.commit = s.author = "";
+        s.failure = "IllegalStateException in ServiceCheck.java";
+        s.reason = "No change has a strong direct relationship to this failure.";
+        s.ai = "The docs changes do not explain the failing service check.";
+        s.aiResolution = SlackMessageText.resolution(s.ai, List.of("Replace the service."), s.check, true);
+        assertEquals(SlackMessageText.NO_RESOLUTION, s.aiResolution);
+        String rendered = SlackMessageRenderer.initial(s, null);
+        assertTrue(rendered.contains(SlackMessageText.NO_RESOLUTION));
+        assertTrue(rendered.contains(s.reason));
+        assertFalse(rendered.contains("Replace the service"));
+        assertFalse(rendered.contains("Most relevant change"));
+        for (List<String> checks : List.of(List.<String>of(), List.of(s.check), List.of(s.ai)))
+            assertEquals(SlackMessageText.NO_RESOLUTION, SlackMessageText.resolution(s.ai, checks, s.check, false));
+        assertEquals(SlackMessageText.NO_RESOLUTION, SlackMessageText.resolution(s.ai, null, s.check, false));
+    }
+
+    @Test
+    void changeSummaryKeepsThreeCompactLinesWithoutChangingSnapshotEvidence() throws Exception {
+        for (String prefix : List.of(
+                "/var/jenkins_home/workspace/Demo Project/",
+                "C:\\Jenkins\\workspace\\Demo Project\\",
+                "services/trading/src/main/java/")) {
+            SlackSnapshot s = sample();
+            s.source = prefix + "CollateralTrade.java";
+            String original = s.toJson();
+            JsonNode message = JSON.readTree(SlackMessageRenderer.initial(s, null));
+            assertEquals(
+                    "a254c24e · Alex Morrison\nCollateralTrade.java\nEvidence strength: Strong",
+                    sectionText(message, "Most relevant change"));
+            assertEquals(original, s.toJson());
+        }
+    }
+
+    @Test
+    void aiTextIsBoundedAndPathsAreCompactAndPlainText() throws Exception {
+        SlackSnapshot s = sample();
+        s.ai =
+                "/var/jenkins_home/workspace/Demo Project/src/main/java/CollateralTrade.java may reference an undeclared variable. "
+                        + "Details ".repeat(1000);
+        s.aiResolution =
+                "Check src/main/java/CollateralTrade.java and C:\\Jenkins\\workspace\\Demo Project\\CollateralTrade.java before correcting the reference. "
+                        + ATTACK + " Review ".repeat(1000);
+        JsonNode message = JSON.readTree(SlackMessageRenderer.initial(s, null));
+        String text = sectionText(message, "AI Analysis");
+        assertTrue(text.length() <= 740);
+        assertFalse(text.contains("workspace"));
+        assertFalse(text.contains("src/main/java"));
+        assertTrue(text.contains("CollateralTrade.java"));
+        assertTrue(
+                markdown(message).stream().noneMatch(value -> value.contains("evil.invalid") || value.contains("<@")));
+        assertTrue(message.path("blocks").size() <= 30);
+    }
+
+    @Test
+    void absentAiStaysAbsentAndLegacySnapshotHasSafeResolution() throws Exception {
+        SlackSnapshot s = sample();
+        assertFalse(SlackMessageRenderer.initial(s, null).contains("AI Analysis"));
+        s.aiPending = true;
+        assertFalse(SlackMessageRenderer.initial(s, null).contains("AI Analysis"));
+        s.ai = "The declaration may be missing.";
+        var old = (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(s.toJson());
+        old.remove("aiResolution");
+        SlackSnapshot restored = SlackSnapshot.fromJson(old.toString());
+        assertEquals("", restored.aiResolution);
+        assertTrue(SlackMessageRenderer.initial(restored, null).contains(SlackMessageText.NO_RESOLUTION));
+        s.aiScope = "current";
+        restored.aiScope = "other";
+        restored.aiResolution = "Do not copy this.";
+        s.includeAi(restored);
+        assertEquals("", s.aiResolution);
+        restored.aiScope = "current";
+        s.includeAi(restored);
+        assertEquals(restored.aiResolution, s.aiResolution);
+    }
+
+    private String sectionText(JsonNode message, String heading) {
+        var blocks = message.path("blocks");
+        for (int i = 0; i < blocks.size() - 1; i++) {
+            if (blocks.get(i).path("text").path("text").asText().equals("*" + heading + "*")) {
+                assertEquals(
+                        "plain_text",
+                        blocks.get(i + 1).path("text").path("type").asText());
+                return blocks.get(i + 1).path("text").path("text").asText();
+            }
+        }
+        fail("Missing section " + heading);
+        return "";
     }
 
     @Test

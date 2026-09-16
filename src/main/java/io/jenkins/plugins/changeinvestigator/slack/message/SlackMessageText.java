@@ -73,27 +73,40 @@ final class SlackMessageText {
         };
     }
 
-    static String ai(String explanation, List<String> checks, String deterministicCheck) {
-        String result = compactAi(SlackSnapshot.safe(explanation, 350), deterministicCheck);
+    static final String NO_RESOLUTION =
+            "Review the identified change and failing check manually; the available evidence is not sufficient to recommend a specific fix.";
+
+    static String source(String value) {
+        String path = value.replace('\\', '/');
+        return SlackSnapshot.safe(path.substring(path.lastIndexOf('/') + 1), 160);
+    }
+
+    static String resolution(String explanation, List<String> checks, String deterministicCheck, boolean insufficient) {
+        if (insufficient || checks == null) return NO_RESOLUTION;
+        String issue = compactAi(explanation, deterministicCheck);
         for (String check : checks.stream().limit(3).toList()) {
-            String candidate = SlackSnapshot.safe(check, 180);
-            if (!normalized(candidate).isBlank()
-                    && !sameCheck(candidate, deterministicCheck)
-                    && !normalized(result).contains(normalized(candidate))) {
-                result += (result.isBlank() ? "" : " ") + candidate;
-                break;
+            String candidate = compactAi(check, deterministicCheck);
+            if (!normalized(candidate).isBlank() && !normalized(issue).contains(normalized(candidate))) {
+                return candidate;
             }
         }
-        return compactAi(result, deterministicCheck);
+        return NO_RESOLUTION;
     }
 
     static String compactAi(String value, String deterministicCheck) {
-        return java.util.Arrays.stream(SlackSnapshot.safe(value, 600).split("\\r?\\n|(?<=[.!?])\\s+"))
-                .filter(line -> !sameCheck(line, deterministicCheck))
-                .filter(line -> !line.trim().equals("Interpretation only, not a confirmed cause."))
-                .distinct()
-                .reduce((a, b) -> a + " " + b)
-                .orElse("");
+        String compactPaths = FILE_PATH
+                .matcher(SlackSnapshot.safe(value, 8000))
+                .replaceAll("$1")
+                .replaceAll("(?:[A-Za-z0-9_.$~-]+[/\\\\])+([A-Za-z0-9_.$~-]+\\.[A-Za-z0-9_+-]+)", "$1");
+        return SlackSnapshot.safe(
+                java.util.Arrays.stream(compactPaths.split("\\r?\\n|(?<=[.!?])\\s+"))
+                        .filter(line -> !sameCheck(line, deterministicCheck))
+                        .filter(line -> !line.trim().equals("Interpretation only, not a confirmed cause."))
+                        .distinct()
+                        .limit(3)
+                        .reduce((a, b) -> a + " " + b)
+                        .orElse(""),
+                350);
     }
 
     private static boolean sameCheck(String value, String deterministic) {
