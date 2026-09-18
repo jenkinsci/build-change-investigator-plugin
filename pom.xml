@@ -209,6 +209,12 @@
 
     <!-- Test-only -->
     <dependency>
+      <groupId>org.jenkins-ci.main</groupId>
+      <artifactId>maven-plugin</artifactId>
+      <version>3.27</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>junit</artifactId>
       <scope>test</scope>

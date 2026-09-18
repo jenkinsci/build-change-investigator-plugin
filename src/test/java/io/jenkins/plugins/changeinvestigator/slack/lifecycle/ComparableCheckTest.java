@@ -18,6 +18,40 @@ class ComparableCheckTest {
             ComparableCheck.failed(List.of(HEADER, ERROR), SIGNAL, "builder");
 
     @Test
+    void reportedMaven381ExecutionAndNonComparableAlternatives() {
+        String header = "[INFO] --- compiler:3.8.1:compile (default-compile) @ collateral-service ---";
+        var signal = FailureSignal.extract(List.of(header, ERROR));
+        var check = ComparableCheck.failed(List.of(header, ERROR), signal, "maven-project");
+        assertNotNull(check);
+        var success = List.of(
+                header,
+                "[INFO] Changes detected - recompiling the module!",
+                "[INFO] Compiling 182 source files to /synthetic/target/classes",
+                "[INFO] --- resources:3.3.1:testResources (default-testResources) @ collateral-service ---",
+                "[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ collateral-service ---",
+                "[INFO] Nothing to compile - all classes are up to date",
+                "[INFO] --- surefire:3.2.5:test (default-test) @ collateral-service ---",
+                "[INFO] --- jar:3.4.1:jar (default-jar) @ collateral-service ---",
+                "[INFO] --- install:3.1.2:install (default-install) @ collateral-service ---",
+                GOOD);
+        assertNotNull(ComparableCheck.passed(success, check, "maven-project", true));
+        for (String different : List.of(
+                header.replace("collateral-service", "other-service"),
+                header.replace("default-compile", "alternate-compile"),
+                header.replace("compiler:", "other-plugin:"),
+                header.replace(":compile", ":testCompile"),
+                header.replace("3.8.1", "3.13.0"))) {
+            assertNull(ComparableCheck.passed(List.of(different, COMPILED, GOOD), check, "maven-project", true));
+        }
+        assertNull(ComparableCheck.passed(
+                List.of(header, "[INFO] Skipping compilation", GOOD), check, "maven-project", true));
+        assertNull(ComparableCheck.passed(List.of(header, GOOD), check, "maven-project", true));
+        assertNull(ComparableCheck.passed(List.of(GOOD), check, "maven-project", true));
+        assertNull(ComparableCheck.passed(success, null, "maven-project", true));
+        assertNull(ComparableCheck.passed(success, check, "", true));
+    }
+
+    @Test
     void positiveComparableCompileIsVerified() {
         assertNotNull(CHECK);
         assertNotNull(ComparableCheck.passed(List.of(HEADER, COMPILED, GOOD), CHECK, "builder", true));

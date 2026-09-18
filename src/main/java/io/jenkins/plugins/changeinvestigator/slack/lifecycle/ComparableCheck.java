@@ -93,7 +93,7 @@ public final class ComparableCheck {
                     ? new Proof(expected, "The affected test ran and passed in the published JUnit results.")
                     : null;
         }
-        return passed(read(run), expected, executionContext, true);
+        return MavenExecution.completed(run, expected) ? passed(read(run), expected, executionContext, true) : null;
     }
 
     public static Proof passed(List<String> lines, Check expected, String executionContext, boolean successful) {

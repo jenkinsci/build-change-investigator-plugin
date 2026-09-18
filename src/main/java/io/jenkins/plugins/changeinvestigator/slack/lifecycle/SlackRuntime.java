@@ -171,18 +171,18 @@ public final class SlackRuntime {
             state.lastBuild = run.getNumber();
             return;
         }
-        int baseline = state.active == null || state.active.closed
-                ? 0
-                : SlackSnapshot.fromJson(state.active.context).getLastGood();
-        SlackSnapshot snapshot = SlackSnapshot.capture(run, baseline);
+        SlackSnapshot snapshot = SlackSnapshot.capture(run, 0);
         if (snapshot == null || snapshot.getSignature().isEmpty()) {
             state.lastBuild = run.getNumber();
             return;
         }
+        int lastGood = snapshot.getLastGood();
+        int firstBad = snapshot.getFirstBad();
         boolean initial =
-                state.active == null || state.active.closed || !state.active.signature.equals(snapshot.getSignature());
-        if (initial) {
-            snapshot = SlackSnapshot.capture(run, 0);
+                EpisodeEngine.startsEpisode(state, run.getNumber(), snapshot.getSignature(), lastGood, firstBad);
+        if (!initial) {
+            snapshot = SlackSnapshot.capture(
+                    run, SlackSnapshot.fromJson(state.active.context).getLastGood());
             if (snapshot == null || snapshot.getSignature().isEmpty()) {
                 state.lastBuild = run.getNumber();
                 return;
@@ -236,7 +236,9 @@ public final class SlackRuntime {
                 check,
                 initial ? connection.route().channelId() : state.active.channel,
                 payload,
-                now);
+                now,
+                lastGood,
+                firstBad);
         if (result.equals("INITIAL")) {
             state.active.context = snapshot.toJson();
             state.active.deliveries.get(0).mappingRevision = mappingRevision;
@@ -404,7 +406,7 @@ public final class SlackRuntime {
     }
 
     static String executionContext(Run<?, ?> run) {
-        if (!(run.getParent() instanceof FreeStyleProject)) return "";
+        if (!(run.getParent() instanceof FreeStyleProject) && !MavenExecution.isModuleSet(run)) return "";
         ExecutionContext context = run.getAction(ExecutionContext.class);
         if (context == null || context.configurationHash == null || !context.configurationHash.matches("[a-f0-9]{64}"))
             return "";
@@ -413,12 +415,16 @@ public final class SlackRuntime {
     }
 
     private static void captureExecutionContext(Run<?, ?> run) throws IOException {
-        if (!(run.getParent() instanceof FreeStyleProject project) || run.getAction(ExecutionContext.class) != null)
-            return;
-        String configuration = Jenkins.XSTREAM2.toXML(project.getBuildersList().toList())
-                + Jenkins.XSTREAM2.toXML(project.getPublishersList().toList())
-                + Jenkins.XSTREAM2.toXML(project.getScm());
-        if (configuration.length() > 128000) return;
+        if (run.getAction(ExecutionContext.class) != null) return;
+        String configuration;
+        if (run.getParent() instanceof FreeStyleProject project) {
+            configuration = Jenkins.XSTREAM2.toXML(project.getBuildersList().toList())
+                    + Jenkins.XSTREAM2.toXML(project.getPublishersList().toList())
+                    + Jenkins.XSTREAM2.toXML(project.getScm());
+        } else {
+            configuration = MavenExecution.configuration(run);
+        }
+        if (configuration == null || configuration.length() > 128000) return;
         var context = new ExecutionContext(EpisodeEngine.digest(configuration));
         run.addAction(context);
         try {
