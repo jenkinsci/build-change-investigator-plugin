@@ -484,6 +484,35 @@ class SlackRuntimeTest {
         assertFalse(payloads.get(1).contains("<@"));
     }
 
+    @Test
+    void verifiedNewBoundarySupersedesUnrecoveredSameSignature(JenkinsRule jenkins) throws Exception {
+        configure();
+        FreeStyleProject project = jenkins.createFreeStyleProject();
+        project.getBuildersList().add(new CompileBuilder());
+        project.addProperty(new SlackJobProperty(true, false, ""));
+        jenkins.buildAndAssertSuccess(project);
+        mode = "failure";
+        jenkins.assertBuildStatus(Result.FAILURE, project.scheduleBuild2(0));
+        await(project, 2, 1);
+        String oldId = new EpisodeStore(project).read().active.id;
+        mode = "unverified";
+        jenkins.buildAndAssertSuccess(project);
+        await(project, 3, 1);
+        assertFalse(new EpisodeStore(project).read().active.closed);
+        mode = "failure";
+        var recurrence = project.scheduleBuild2(0).get();
+        var action = recurrence.getAction(io.jenkins.plugins.changeinvestigator.InvestigationAction.class);
+        assertTrue(action.getView().getHistory().isVerified());
+        assertEquals(4, action.getView().getHistory().getFirstBad());
+        await(project, 4, 2);
+        var state = new EpisodeStore(project).read();
+        assertNotEquals(oldId, state.active.id);
+        assertFalse(state.history.get(0).closed, "Superseding an episode does not invent recovery proof");
+        assertEquals("root", threads.get(1));
+        jenkins.assertBuildStatus(Result.FAILURE, project.scheduleBuild2(0));
+        await(project, 5, 2);
+    }
+
     private static void configureAi(String url) {
         com.cloudbees.plugins.credentials.SystemCredentialsProvider.getInstance()
                 .getCredentials()

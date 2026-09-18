@@ -99,10 +99,33 @@ public final class EpisodeEngine {
             String channel,
             String payload,
             long now) {
+        return failure(state, build, signature, material, check, channel, payload, now, 0, 0);
+    }
+
+    /** A verified later regression window supersedes an unverified old episode without claiming recovery. */
+    public static boolean startsEpisode(State state, int build, String signature, int lastGood, int firstBad) {
+        Episode episode = state.active;
+        return episode == null
+                || episode.closed
+                || !episode.signature.equals(signature)
+                || lastGood > episode.lastFailure && firstBad > lastGood && firstBad <= build;
+    }
+
+    public static String failure(
+            State state,
+            int build,
+            String signature,
+            String material,
+            ComparableCheck.Check check,
+            String channel,
+            String payload,
+            long now,
+            int lastGood,
+            int firstBad) {
         if (build <= state.lastBuild) return "NONE";
         state.lastBuild = build;
         Episode episode = state.active;
-        if (episode == null || episode.closed || !episode.signature.equals(signature)) {
+        if (startsEpisode(state, build, signature, lastGood, firstBad)) {
             if (episode != null) {
                 if (state.history.size() >= 8) {
                     int removable = -1;
