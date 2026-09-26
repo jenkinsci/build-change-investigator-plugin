@@ -64,7 +64,7 @@
          java.lang.NoSuchMethodError from inside BedrockRuntimeClient.builder().build() on every
          single Bedrock call. Keeping this version aligned with aws-java-sdk2-core's is the fix;
          if aws-java-sdk2-core is ever updated, bump this to match at the same time. -->
-    <aws-sdk.version>2.42.33</aws-sdk.version>
+    <aws-sdk.version>2.55.6</aws-sdk.version>
     <!-- The AWS SDK v2 modules the Bedrock provider needs (bedrockruntime, url-connection-client)
          are plain (non-plugin) jars, so the hpi-maven-plugin bundles them, along with their own
          minimal required transitive dependencies, directly into this plugin's .hpi.
